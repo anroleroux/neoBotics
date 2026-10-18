@@ -1,0 +1,89 @@
+name: cad
+
+on:
+  push:
+    branches:
+      - main
+      - 'claude/**'
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      design:
+        description: 'a directory under designs/ holding description.md, to generate with Claude'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  # Tests and the hand-written example: no model, no API key.
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      # CadQuery's OpenCascade (OCP) and VTK wheels link against these even headless
+      - name: Install system libraries for CadQuery
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libgl1 libglu1-mesa libxrender1 libxcursor1 libxft2 libxinerama1
+
+      - name: Install neobotics
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+
+      - name: Run tests
+        run: python -m pytest -q
+
+      - name: Build the example part
+        run: neobotics cad examples/motor_mount/part.py --out results/motor_mount
+
+      - name: Upload the example
+        uses: actions/upload-artifact@v4
+        with:
+          name: motor-mount
+          path: results
+          if-no-files-found: error
+
+  # NL -> script -> CAD with Claude, on demand: Actions -> cad -> Run workflow,
+  # naming a design directory.  Needs the ANTHROPIC_API_KEY repository secret.
+  generate:
+    if: github.event_name == 'workflow_dispatch' && inputs.design != ''
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install system libraries for CadQuery
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libgl1 libglu1-mesa libxrender1 libxcursor1 libxft2 libxinerama1
+
+      - name: Install neobotics
+        run: python -m pip install --upgrade pip && python -m pip install -e .
+
+      - name: Generate the part
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DESIGN: ${{ inputs.design }}
+        run: |
+          neobotics generate --description "designs/$DESIGN/description.md" \
+            --out "results/$DESIGN"
+
+      - name: Upload the generated part
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-${{ inputs.design }}
+          path: results
+          if-no-files-found: warn

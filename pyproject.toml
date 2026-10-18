@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "neobotics"
+version = "0.1.0"
+description = "Natural language -> CadQuery (B-rep) script -> CAD model, with Claude"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "anthropic>=1.15",
+    "cadquery>=2.4",
+    "matplotlib>=3.7",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4"]
+
+[project.scripts]
+neobotics = "neobotics.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
