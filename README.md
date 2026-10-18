@@ -60,7 +60,19 @@ neobotics cad examples/motor_mount/part.py --out results/motor_mount
 
 # a shaded PNG of any BREP or STL (--view iso | rear_below)
 neobotics view results/motor_mount/cad/part.stl
+
+# a static HTML page of built parts: 3D viewer, measurements, script, downloads
+neobotics site results/motor_mount results/gripper --site site
 ```
+
+### Without an API key
+
+The NL → script step does not have to be a `generate` run. A person (or
+Claude in a coding session) can read `designs/<name>/description.md`, write
+`designs/<name>/part.py` to the same contract, and commit both. CI builds every
+committed `part.py` and publishes it, so no key is involved. This is how
+designs are added for now. `generate` automates the same step once a key is
+set.
 
 `generate` options: `--max-attempts N` (scripts in all, repairs included),
 `--review N` (review rounds), `--model`, `--effort low|medium|high|xhigh|max`
@@ -114,18 +126,29 @@ same names can carry an assembly's mates or a study's loads.
 | `neobotics.part` | runs a part script in a child process, checks it, exports BREP / STEP / STL / PNG and `summary.json` |
 | `neobotics.cadview` | headless shaded rendering (numpy z-buffer, no OpenGL), adapted from topocombo's `cadview` |
 | `neobotics.pipeline` | lays out a run directory around the two stages |
+| `neobotics.site` | the static page: an interactive three.js view of each part's STL, its description, measurements, script and downloads |
 | `neobotics.cli` | `neobotics generate / cad / view` |
 
 The model sits behind a small `Coder` interface (`(system, messages) ->
 (text, content)`), so the tests drive the whole loop with scripted replies and
 real CadQuery builds, with no network.
 
-## CI
+## CI and GitHub Pages
 
-`.github/workflows/cad.yml` runs the tests and builds the example on every
-push, then uploads the CAD files. To generate a design in CI, add an
-`ANTHROPIC_API_KEY` repository secret and start the workflow by hand with
-`design` set to a directory under `designs/` (see `designs/README.md`).
+`.github/workflows/cad.yml` runs on every push and pull request:
+
+1. it runs the tests;
+2. it builds every committed `designs/*/part.py` and `examples/*/part.py`,
+   and uploads the CAD files as the `parts` artifact;
+3. it renders the site with `neobotics site`.
+
+On a push, it also deploys the site to GitHub Pages: one section per part,
+with a 3D view you can orbit and STEP / STL / BREP / script downloads. Pages
+must be set to deploy from GitHub Actions (Settings → Pages → Source).
+
+To generate a design with Claude in CI, add an `ANTHROPIC_API_KEY` repository
+secret and start the workflow by hand with `design` set to a directory under
+`designs/` (see `designs/README.md`).
 
 ## Safety
 

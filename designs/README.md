@@ -6,7 +6,11 @@ One directory per part, holding its natural-language description:
 designs/<name>/description.md
 ```
 
-Generate it locally with
+Write the part script by hand (or have Claude write it in a coding session)
+as `designs/<name>/part.py`, following the contract in the main README. CI
+builds every committed `part.py` and publishes it on the GitHub Pages site.
+
+Or generate it locally with
 
 ```bash
 neobotics generate --description designs/<name>/description.md --out results/<name>

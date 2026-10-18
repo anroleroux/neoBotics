@@ -1,4 +1,4 @@
-"""Command line: ``neobotics generate | cad | view``.
+"""Command line: ``neobotics generate | cad | view | site``.
 
     # NL -> CadQuery script -> BREP / STEP / STL / PNG, with Claude
     neobotics generate --description designs/gripper/description.md --out results/gripper
@@ -9,6 +9,9 @@
 
     # a shaded PNG of any BREP or STL
     neobotics view results/motor_mount/cad/part.stl
+
+    # a static HTML site of built parts (what GitHub Pages serves)
+    neobotics site results/motor_mount results/gripper --site site
 """
 
 from __future__ import annotations
@@ -54,7 +57,21 @@ def main(argv: list[str] | None = None) -> int:
     p_view.add_argument("--out", type=Path)
     p_view.add_argument("--view", default="iso")
 
+    p_site = sub.add_parser("site", help="render built parts as a static HTML site")
+    p_site.add_argument("runs", type=Path, nargs="+", help="run directories holding cad/")
+    p_site.add_argument("--site", type=Path, default=Path("site"))
+
     args = parser.parse_args(argv)
+
+    if args.command == "site":
+        from .site import build_site, read_part
+
+        try:
+            index = build_site([read_part(r) for r in args.runs], args.site)
+        except (OSError, ValueError) as exc:
+            parser.error(f"site: {exc}")
+        print(f"site: {index}")
+        return 0
 
     if args.command == "generate":
         from . import nl2cad

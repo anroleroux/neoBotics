@@ -26,12 +26,19 @@ from .part import BuildResult, build_part
 
 
 def run_script(script: Path, out_dir: Path) -> BuildResult:
-    """Build a part script into ``out_dir/cad`` (and copy it to ``out_dir/part.py``)."""
-    out_dir = Path(out_dir)
+    """Build a part script into ``out_dir/cad``.
+
+    The script is copied to ``out_dir/part.py``, and a ``description.md`` next
+    to it (a design directory) to ``out_dir/description.md``.
+    """
+    script, out_dir = Path(script), Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     result = build_part(script, out_dir / "cad")
-    if result.ok and Path(script).resolve() != (out_dir / "part.py").resolve():
-        shutil.copyfile(script, out_dir / "part.py")
+    if result.ok:
+        for source, target in ((script, out_dir / "part.py"),
+                               (script.parent / "description.md", out_dir / "description.md")):
+            if source.exists() and source.resolve() != target.resolve():
+                shutil.copyfile(source, target)
     return result
 
 

@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 jobs:
-  # Tests and the hand-written example: no model, no API key.
+  # Tests, every committed part script, and the site: no model, no API key.
   build:
     runs-on: ubuntu-latest
     steps:
@@ -40,15 +40,49 @@ jobs:
       - name: Run tests
         run: python -m pytest -q
 
-      - name: Build the example part
-        run: neobotics cad examples/motor_mount/part.py --out results/motor_mount
+      # every designs/<name>/part.py, then the example; each run keeps the
+      # description.md that sits next to its script
+      - name: Build the parts
+        run: |
+          runs=()
+          for script in designs/*/part.py examples/*/part.py; do
+            [ -e "$script" ] || continue
+            name=$(basename "$(dirname "$script")")
+            neobotics cad "$script" --out "results/$name"
+            runs+=("results/$name")
+          done
+          neobotics site "${runs[@]}" --site site
 
-      - name: Upload the example
+      - name: Upload the parts
         uses: actions/upload-artifact@v4
         with:
-          name: motor-mount
+          name: parts
           path: results
           if-no-files-found: error
+
+      - name: Upload the site for Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    # one deployment at a time; let a running one finish
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
 
   # NL -> script -> CAD with Claude, on demand: Actions -> cad -> Run workflow,
   # naming a design directory.  Needs the ANTHROPIC_API_KEY repository secret.
