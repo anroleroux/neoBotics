@@ -1,17 +1,18 @@
 """Command line: ``neobotics generate | cad | view | site``.
 
     # NL -> CadQuery script -> BREP / STEP / STL / PNG, with Claude
-    neobotics generate --description designs/gripper/description.md --out results/gripper
+    neobotics generate --description products/B4/grippers/jaw/description.md --out results/jaw
     neobotics generate "a 40 x 40 x 5 mm plate with four M3 holes" --out results/plate
 
     # only the CAD stage, for a script written or edited by hand
-    neobotics cad examples/motor_mount/part.py --out results/motor_mount
+    neobotics cad products/B4/motor_mounts/nema17_bracket/part.py --out results/nema17_bracket
 
     # a shaded PNG of any BREP or STL
-    neobotics view results/motor_mount/cad/part.stl
+    neobotics view results/nema17_bracket/cad/part.stl
 
-    # a static HTML site of built parts (what GitHub Pages serves)
-    neobotics site results/motor_mount results/gripper --site site
+    # build every products/<product>/<subcategory>/<part>/part.py and render
+    # the catalogue page (what GitHub Pages serves)
+    neobotics site products --out results --site site
 """
 
 from __future__ import annotations
@@ -57,21 +58,21 @@ def main(argv: list[str] | None = None) -> int:
     p_view.add_argument("--out", type=Path)
     p_view.add_argument("--view", default="iso")
 
-    p_site = sub.add_parser("site", help="render built parts as a static HTML site")
-    p_site.add_argument("runs", type=Path, nargs="+", help="run directories holding cad/")
+    p_site = sub.add_parser("site", help="build every part in the products/ tree and render "
+                                         "the catalogue site")
+    p_site.add_argument("root", type=Path, nargs="?", default=Path("products"),
+                        help="<product>/<subcategory>/<part>/part.py tree (default: products)")
+    p_site.add_argument("--out", type=Path, default=Path("results"),
+                        help="where the parts are built (default: results)")
     p_site.add_argument("--site", type=Path, default=Path("site"))
 
     args = parser.parse_args(argv)
 
     if args.command == "site":
-        from .site import build_site, read_part
+        from .catalog import main as catalog_main
 
-        try:
-            index = build_site([read_part(r) for r in args.runs], args.site)
-        except (OSError, ValueError) as exc:
-            parser.error(f"site: {exc}")
-        print(f"site: {index}")
-        return 0
+        rest = [str(args.root), "--out", str(args.out), "--site", str(args.site)]
+        return catalog_main(rest)
 
     if args.command == "generate":
         from . import nl2cad

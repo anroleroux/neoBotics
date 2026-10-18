@@ -52,27 +52,35 @@ pip install -e ".[dev]"
 export ANTHROPIC_API_KEY=...        # or `ant auth login`
 
 # NL -> B-rep code -> CAD
-neobotics generate --description designs/gripper/description.md --out results/gripper
+neobotics generate --description products/B4/grippers/jaw/description.md --out results/jaw
 neobotics generate "a 40 x 40 x 5 mm plate with four M3 holes on a 30 mm square" --out results/plate
 
 # only the CAD stage, for a script written or edited by hand (no model, no key)
-neobotics cad examples/motor_mount/part.py --out results/motor_mount
+neobotics cad products/B4/motor_mounts/nema17_bracket/part.py --out results/nema17_bracket
 
 # a shaded PNG of any BREP or STL (--view iso | rear_below)
-neobotics view results/motor_mount/cad/part.stl
+neobotics view results/nema17_bracket/cad/part.stl
 
-# a static HTML page of built parts: 3D viewer, measurements, script, downloads
-neobotics site results/motor_mount results/gripper --site site
+# build every part in the catalogue and render the page: products, their
+# subcategories, and each part with a 3D viewer, measurements, script, downloads
+neobotics site products --out results --site site
 ```
 
 ### Without an API key
 
 The NL → script step does not have to be a `generate` run. A person (or
-Claude in a coding session) can read `designs/<name>/description.md`, write
-`designs/<name>/part.py` to the same contract, and commit both. CI builds every
-committed `part.py` and publishes it, so no key is involved. This is how
-designs are added for now. `generate` automates the same step once a key is
+Claude in a coding session) can read a part's `description.md`, write its
+`part.py` to the same contract, and commit both. CI builds every committed
+`part.py` and publishes it, so no key is involved. This is how parts are added
+for now. `generate` automates the same step once a key is
 set.
+
+### The catalogue
+
+Parts live in `products/<product>/<subcategory>/<part>/`, each with its
+`description.md` and `part.py`. `product.md` and `category.md` name a product
+and a subcategory and describe them. The first product is **B4**, and its first
+subcategory is **Motor mounts**. See `products/README.md`.
 
 `generate` options: `--max-attempts N` (scripts in all, repairs included),
 `--review N` (review rounds), `--model`, `--effort low|medium|high|xhigh|max`
@@ -81,7 +89,7 @@ set.
 ### A run directory
 
 ```
-results/gripper/
+results/jaw/
   description.md     the input, as given
   part.py            the script that built the part
   cad/               part.brep, part.step, part.stl, part.png, part_rear_below.png, summary.json
@@ -92,8 +100,8 @@ results/gripper/
 
 ### The part script
 
-`examples/motor_mount/` is a hand-written reference: a NEMA 17 motor bracket
-with its description next to it. It follows the same contract a generated
+`products/B4/motor_mounts/nema17_bracket/` is a hand-written reference: a
+NEMA 17 motor bracket with its description next to it. It follows the same contract a generated
 script does:
 
 ```python
@@ -127,7 +135,8 @@ same names can carry an assembly's mates or a study's loads.
 | `neobotics.cadview` | headless shaded rendering (numpy z-buffer, no OpenGL), adapted from topocombo's `cadview` |
 | `neobotics.pipeline` | lays out a run directory around the two stages |
 | `neobotics.site` | the static page: an interactive three.js view of each part's STL, its description, measurements, script and downloads |
-| `neobotics.cli` | `neobotics generate / cad / view` |
+| `neobotics.catalog` | reads the `products/` tree, builds every part, renders the page |
+| `neobotics.cli` | `neobotics generate / cad / view / site` |
 
 The model sits behind a small `Coder` interface (`(system, messages) ->
 (text, content)`), so the tests drive the whole loop with scripted replies and
@@ -138,17 +147,18 @@ real CadQuery builds, with no network.
 `.github/workflows/cad.yml` runs on every push and pull request:
 
 1. it runs the tests;
-2. it builds every committed `designs/*/part.py` and `examples/*/part.py`,
-   and uploads the CAD files as the `parts` artifact;
-3. it renders the site with `neobotics site`.
+2. `neobotics site` builds every `products/*/*/*/part.py` and renders the
+   page; a part that fails to build fails the job;
+3. it uploads the CAD files as the `parts` artifact.
 
-On a push, it also deploys the site to GitHub Pages: one section per part,
-with a 3D view you can orbit and STEP / STL / BREP / script downloads. Pages
+On a push, it also deploys the page to GitHub Pages. The page is grouped by
+product, then subcategory. Each part has a 3D view you can orbit and STEP /
+STL / BREP / script downloads. Pages
 must be set to deploy from GitHub Actions (Settings → Pages → Source).
 
 To generate a design with Claude in CI, add an `ANTHROPIC_API_KEY` repository
-secret and start the workflow by hand with `design` set to a directory under
-`designs/` (see `designs/README.md`).
+secret and start the workflow by hand with `design` set to a part path such
+as `B4/grippers/jaw` (see `products/README.md`).
 
 ## Safety
 

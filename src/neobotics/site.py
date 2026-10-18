@@ -1,24 +1,25 @@
-"""A static HTML site of built parts, for GitHub Pages: ``neobotics site``.
+"""A static HTML catalogue of built parts, for GitHub Pages: ``neobotics site``.
 
 A downstream consumer like :mod:`neobotics.cadview`: it reads run directories
-(``description.md``, ``part.py``, ``cad/``) and never runs a script.  Each part
-gets a section with its description, an interactive 3D view of its STL
-(three.js, loaded from a CDN, with the shaded PNGs as the fallback), the
-measured summary, the CadQuery script and downloads of every CAD file.
+(``description.md``, ``part.py``, ``cad/``) and never runs a script.  Parts are
+grouped as product -> subcategory -> part (:mod:`neobotics.catalog` reads that
+tree from ``products/``).  The page opens with each product and its
+subcategories; every part gets a section with its description, an interactive
+3D view of its STL (three.js, loaded from a CDN, with the shaded PNGs as the
+fallback), the measured summary, the CadQuery script and downloads of every
+CAD file.
 
     site/
       index.html
-      parts/<name>/part.stl, part.step, part.brep, part.py, part.png, ...
+      parts/<product>/<subcategory>/<part>/part.stl, part.step, part.brep, part.py, ...
 """
 
 from __future__ import annotations
 
-import argparse
 import html
 import json
 import shutil
-import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 #: three.js, pinned; the page loads it as an ES module through an import map.
@@ -45,6 +46,30 @@ class Part:
     script: str
     summary: dict
     cad_dir: Path
+
+
+@dataclass
+class Category:
+    """A subcategory of a product: a named group of parts."""
+
+    slug: str
+    title: str
+    blurb: str = ""
+    parts: list[Part] = field(default_factory=list)
+
+
+@dataclass
+class Product:
+    """A product: its subcategories, in order."""
+
+    slug: str
+    title: str
+    blurb: str = ""
+    categories: list[Category] = field(default_factory=list)
+
+    @property
+    def n_parts(self) -> int:
+        return sum(len(c.parts) for c in self.categories)
 
 
 def read_part(run_dir: Path, name: str | None = None) -> Part:
@@ -77,23 +102,31 @@ def _title(script: str, fallback: str) -> str:
     return fallback.replace("_", " ")
 
 
-def build_site(parts: list[Part], site_dir: Path) -> Path:
+def _anchor(*slugs: str) -> str:
+    return "--".join(slugs)
+
+
+def build_site(products: list[Product], site_dir: Path) -> Path:
     """Write ``index.html`` and every part's files into ``site_dir``."""
     site_dir = Path(site_dir)
-    if not parts:
+    if not any(p.n_parts for p in products):
         raise ValueError("no parts to publish")
-    names = [p.name for p in parts]
-    if len(set(names)) != len(names):
-        raise ValueError(f"part names must be unique, got {names}")
-    for part in parts:
-        target = site_dir / "parts" / part.name
-        target.mkdir(parents=True, exist_ok=True)
-        for filename, *_ in DOWNLOADS:
-            shutil.copyfile(part.cad_dir / filename, target / filename)
-        for filename in IMAGES:
-            shutil.copyfile(part.cad_dir / filename, target / filename)
+    for kind, slugs in (("product", [p.slug for p in products]),
+                        *((f"subcategory of {p.slug}", [c.slug for c in p.categories])
+                          for p in products),
+                        *((f"part in {p.slug}/{c.slug}", [x.name for x in c.parts])
+                          for p in products for c in p.categories)):
+        if len(set(slugs)) != len(slugs):
+            raise ValueError(f"{kind} names must be unique, got {slugs}")
+    for product in products:
+        for category in product.categories:
+            for part in category.parts:
+                target = site_dir / "parts" / product.slug / category.slug / part.name
+                target.mkdir(parents=True, exist_ok=True)
+                for filename in [f for f, *_ in DOWNLOADS] + IMAGES:
+                    shutil.copyfile(part.cad_dir / filename, target / filename)
     index = site_dir / "index.html"
-    index.write_text(render_index(parts))
+    index.write_text(render_index(products))
     (site_dir / ".nojekyll").write_text("")
     return index
 
@@ -114,6 +147,10 @@ def _num(value: float) -> str:
     return f"{value:,.1f}".rstrip("0").rstrip(".") if value % 1 else f"{value:,.0f}"
 
 
+def _plural(n: int, word: str) -> str:
+    return f"{n} {word}{'' if n == 1 else 's'}"
+
+
 def _summary_rows(summary: dict) -> str:
     bb = summary["bounding_box"]
     size = " × ".join(_num(v) for v in bb["size"])
@@ -130,21 +167,22 @@ def _summary_rows(summary: dict) -> str:
     return "".join(f"<tr><th scope=row>{_e(k)}</th><td>{_e(v)}</td></tr>" for k, v in rows)
 
 
-def _part_section(part: Part) -> str:
-    base = f"parts/{part.name}"
+def _part_section(product: Product, category: Category, part: Part) -> str:
+    base = f"parts/{product.slug}/{category.slug}/{part.name}"
     downloads = "".join(
         f'<li><a href="{base}/{f}" download><span class=fmt>{_e(label)}</span>'
         f"<span class=note>{_e(note)}</span></a></li>"
         for f, label, note in DOWNLOADS
     )
     description = (
-        f"<div class=description><h3>Description</h3>{_paragraphs(part.description)}</div>"
+        f"<div class=description><h4>Description</h4>{_paragraphs(part.description)}</div>"
         if part.description else ""
     )
     return f"""
-<section class=part id="{_e(part.name)}">
+<section class=part id="{_e(_anchor(product.slug, category.slug, part.name))}">
   <header class=part-head>
-    <h2>{_e(part.title)}</h2>
+    <p class=crumbs>{_e(product.title)} <span aria-hidden=true>›</span> {_e(category.title)}</p>
+    <h3>{_e(part.title)}</h3>
     <code class=slug>{_e(part.name)}</code>
   </header>
   <div class=part-grid>
@@ -154,9 +192,9 @@ def _part_section(part: Part) -> str:
     </figure>
     <div class=facts>
       {description}
-      <h3>Measured from the B-rep</h3>
+      <h4>Measured from the B-rep</h4>
       <table>{_summary_rows(part.summary)}</table>
-      <h3>Downloads</h3>
+      <h4>Downloads</h4>
       <ul class=downloads>{downloads}</ul>
     </div>
   </div>
@@ -174,16 +212,63 @@ def _part_section(part: Part) -> str:
 </section>"""
 
 
-def render_index(parts: list[Part]) -> str:
-    nav = "".join(f'<a href="#{_e(p.name)}">{_e(p.title)}</a>' for p in parts)
-    sections = "".join(_part_section(p) for p in parts)
+def _category_section(product: Product, category: Category) -> str:
+    parts = "".join(_part_section(product, category, p) for p in category.parts)
+    blurb = _paragraphs(category.blurb) if category.blurb else ""
+    return f"""
+<section class=category id="{_e(_anchor(product.slug, category.slug))}">
+  <header class=category-head>
+    <h2>{_e(category.title)}</h2>
+    <span class=count>{_plural(len(category.parts), 'part')}</span>
+    {blurb}
+  </header>{parts}
+</section>"""
+
+
+def _product_section(product: Product) -> str:
+    cards = "".join(
+        f'<li><a href="#{_e(_anchor(product.slug, c.slug))}"><span class=card-title>'
+        f"{_e(c.title)}</span><span class=count>{_plural(len(c.parts), 'part')}</span></a></li>"
+        for c in product.categories
+    )
+    categories = "".join(_category_section(product, c) for c in product.categories)
+    blurb = _paragraphs(product.blurb) if product.blurb else ""
+    return f"""
+<section class=product id="{_e(product.slug)}">
+  <header class=product-head>
+    <p class=eyebrow>Product</p>
+    <h2 class=product-title>{_e(product.title)}</h2>
+    <p class=count>{_plural(len(product.categories), 'subcategory').replace('subcategorys', 'subcategories')} ·
+       {_plural(product.n_parts, 'part')}</p>
+    {blurb}
+    <ul class=cards>{cards}</ul>
+  </header>{categories}
+</section>"""
+
+
+def _nav(products: list[Product]) -> str:
+    items = []
+    for p in products:
+        cats = "".join(
+            f'<li><a href="#{_e(_anchor(p.slug, c.slug))}">{_e(c.title)}</a><ul>'
+            + "".join(f'<li><a href="#{_e(_anchor(p.slug, c.slug, x.name))}">{_e(x.title)}</a></li>'
+                      for x in c.parts)
+            + "</ul></li>"
+            for c in p.categories
+        )
+        items.append(f'<li><a class=nav-product href="#{_e(p.slug)}">{_e(p.title)}</a><ul>{cats}</ul></li>')
+    return f'<nav class=tree aria-label=Products><p class=eyebrow>Products</p><ul>{"".join(items)}</ul></nav>'
+
+
+def render_index(products: list[Product]) -> str:
+    sections = "".join(_product_section(p) for p in products)
     return f"""<!doctype html>
 <html lang=en>
 <head>
 <meta charset=utf-8>
 <meta name=viewport content="width=device-width, initial-scale=1">
-<title>neoBotics parts</title>
-<meta name=description content="Parts built from natural-language descriptions as CadQuery B-rep code.">
+<title>neoBotics products</title>
+<meta name=description content="Products and their parts, built from natural-language descriptions as CadQuery B-rep code.">
 <link rel=icon href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2 14V2h4v8h8v4z' fill='%232f6fb1'/%3E%3C/svg%3E">
 <style>{_CSS}</style>
 <script type=importmap>
@@ -201,11 +286,13 @@ def render_index(parts: list[Part]) -> str:
       <li><span>Solid</span><small>checked: valid, closed, with volume</small></li>
       <li><span>STEP · STL · BREP</span><small>and shaded views</small></li>
     </ol>
-    <nav class=parts-nav aria-label=Parts>{nav}</nav>
   </div>
 </header>
-<main class=wrap>{sections}
-</main>
+<div class="wrap layout">
+  {_nav(products)}
+  <main>{sections}
+  </main>
+</div>
 <footer class=wrap><p class=muted>Built by <code>neobotics site</code> from
 <a href="https://github.com/anroleroux/neoBotics">anroleroux/neoBotics</a>. Units are millimetres; z is up.</p></footer>
 <script type=module>{_JS}</script>
@@ -266,6 +353,37 @@ summary{cursor:pointer;font-weight:500}
 pre{background:var(--code-bg);border:1px solid var(--line);border-radius:8px;padding:12px;overflow-x:auto;
 margin:10px 0 0;line-height:1.45}
 footer{padding:8px 16px 32px;font-size:.88rem}
+.layout{display:grid;grid-template-columns:220px minmax(0,1fr);gap:28px;align-items:start}
+@media (max-width:900px){.layout{grid-template-columns:1fr;gap:0}}
+.tree{position:sticky;top:16px;margin-top:24px;font-size:.92rem;max-height:calc(100vh - 32px);overflow-y:auto}
+@media (max-width:900px){.tree{position:static;max-height:none;margin-top:20px}}
+.tree ul{list-style:none;margin:0;padding:0}
+.tree ul ul{padding-left:12px;border-left:1px solid var(--line);margin:4px 0 8px 4px}
+.tree li{margin:3px 0}
+.tree a{color:var(--ink);text-decoration:none}
+.tree a:hover{color:var(--accent);text-decoration:underline}
+.tree ul ul ul a{color:var(--muted)}
+.nav-product{font-weight:600}
+.eyebrow{margin:0 0 4px;font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+.product{margin:24px 0 40px}
+.product-head{padding:4px 0 6px}
+.product-title{margin:0;font-size:2rem;letter-spacing:-.01em}
+.product-head p{max-width:65ch}
+.count{color:var(--muted);font-size:.88rem}
+.product-head>.count{margin:2px 0 8px}
+.cards{list-style:none;padding:0;margin:14px 0 0;display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}
+.cards a{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;
+background:var(--panel);text-decoration:none;color:var(--ink)}
+.cards a:hover{border-color:var(--accent)}
+.card-title{font-weight:600}
+.category{margin-top:28px;padding-top:4px}
+.category-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;border-bottom:2px solid var(--line);padding-bottom:8px}
+.category-head h2{margin:0;font-size:1.3rem}
+.category-head p{flex-basis:100%;margin:2px 0 0;color:var(--muted)}
+.crumbs{flex-basis:100%;margin:0;font-size:.82rem;color:var(--muted)}
+.part-head h3{margin:0;font-size:1.2rem}
+.facts h4,.description h4{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 6px}
+section[id]{scroll-margin-top:12px}
 """
 
 _JS = """
@@ -345,17 +463,10 @@ document.querySelectorAll(".viewer[data-stl]").forEach(mount);
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        prog="neobotics site",
-        description="Render built parts (run directories) as a static HTML site.",
-    )
-    parser.add_argument("runs", type=Path, nargs="+", help="run directories holding cad/")
-    parser.add_argument("--site", type=Path, default=Path("site"))
-    args = parser.parse_args(argv)
-    index = build_site([read_part(r) for r in args.runs], args.site)
-    print(f"site: {index}")
-    return 0
+    from .catalog import main as catalog_main
+
+    return catalog_main(argv)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

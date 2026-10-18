@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       design:
-        description: 'a directory under designs/ holding description.md, to generate with Claude'
+        description: 'a part under products/, as <product>/<subcategory>/<part>, holding description.md, to generate with Claude'
         required: false
         default: ''
 
@@ -40,18 +40,10 @@ jobs:
       - name: Run tests
         run: python -m pytest -q
 
-      # every designs/<name>/part.py, then the example; each run keeps the
-      # description.md that sits next to its script
-      - name: Build the parts
-        run: |
-          runs=()
-          for script in designs/*/part.py examples/*/part.py; do
-            [ -e "$script" ] || continue
-            name=$(basename "$(dirname "$script")")
-            neobotics cad "$script" --out "results/$name"
-            runs+=("results/$name")
-          done
-          neobotics site "${runs[@]}" --site site
+      # every products/<product>/<subcategory>/<part>/part.py, then the
+      # catalogue page; a part that fails to build fails the job
+      - name: Build the parts and the site
+        run: neobotics site products --out results --site site
 
       - name: Upload the parts
         uses: actions/upload-artifact@v4
@@ -111,13 +103,13 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           DESIGN: ${{ inputs.design }}
         run: |
-          neobotics generate --description "designs/$DESIGN/description.md" \
+          neobotics generate --description "products/$DESIGN/description.md" \
             --out "results/$DESIGN"
 
       - name: Upload the generated part
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: generated-${{ inputs.design }}
+          name: generated-part
           path: results
           if-no-files-found: warn
