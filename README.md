@@ -86,9 +86,13 @@ part has its `description.md` and `part.py`. `product.md` and `assembly.md`
 name and describe the levels above.
 
 - **B4** has the assembly **Motor mounts** with the NEMA 17 bracket.
-- **PB4** has the assembly **Chassis**: an open-top box (`base`, driven by
-  `l`, `b`, `h` and `wall`) and a `lid` sized from it. Its `assembly.py` seats
-  the lid on the box, and the build checks the fit.
+- **PB4** has:
+  - the assembly **Chassis**: a base driven by `l`, `b`, `h` and `wall`, and an
+    18650 cell. The chassis `assembly.py` lays four cells along x against the
+    back wall.
+  - its own part, the **lid**, sized from the base.
+
+  `PB4/assembly.py` seats the lid on the chassis, and the build checks the fit.
 
 A part's designation is its path (`PB4/chassis/lid`).
 `neobotics build <designation>` builds just that part, or an assembly's
@@ -171,14 +175,14 @@ real CadQuery builds, with no network.
 
 On a push, it also deploys the site to GitHub Pages:
 
-- `index.html`, the overview: one card per product, with a thumbnail, its
-  assemblies and part counts;
-- `products/<product>/index.html`, one page per product: its assembly tree.
-  Each part shows its designation, a 3D view you can orbit, and STEP / STL /
-  BREP / script downloads.
+- `index.html`, the overview: one card per product;
+- `products/<product>/index.html`, and one page per assembly below it: that
+  level's contents as cards you can click into, then its assembled model with
+  its fit;
+- one page per part: its designation, a 3D view you can orbit, the
+  description, measurements, and STEP / STL / BREP / script downloads.
 
-Every product page leads back to the overview through a breadcrumb, an "All
-products" link and a previous / all products / next pager. Links are
+Every page leads back up through a breadcrumb and a "Back to …" link. Links are
 relative, so the site also works opened from a local folder. Pages
 must be set to deploy from GitHub Actions (Settings → Pages → Source).
 

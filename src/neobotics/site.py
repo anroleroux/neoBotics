@@ -3,22 +3,24 @@
 A downstream consumer like :mod:`neobotics.cadview`: it reads run directories
 (``description.md``, ``part.py``, ``cad/``) and never runs a script.  Parts are
 organised as a product breakdown — product -> assembly -> sub-assembly ... ->
-part, to any depth; :mod:`neobotics.catalog` reads that tree from
-``products/``.  The site is one page for the overview and one per product:
+part, with parts allowed on the product itself; :mod:`neobotics.catalog`
+reads that tree from ``products/``.
+
+The site is one page per level, and each page shows only what is in it:
 
     site/
-      index.html                                       overview: a card per product
-      products/<product>/index.html                    the product's assembly tree and parts
-      products/<product>/<assembly>/.../<part>/        part.stl, part.step, part.brep, part.py, views
-      products/<product>/<assembly>/_assembly/         the assembled model (assembly.py), same files
+      index.html                                    every product, as a card
+      products/<product>/index.html                 the product: its assembled model,
+                                                    then a card per assembly and part in it
+      products/<product>/<assembly>/index.html      an assembly: the same, one level down
+      products/<product>/.../_assembly/             an assembled model's files
+      products/<product>/.../<part>/index.html      a part: 3D view, description,
+                                                    measurements, downloads, script
 
-Every product page links back to the overview (breadcrumb, "All products",
-and a previous / up / next pager), and all links are relative, so the site
-works from any base URL — a GitHub Pages project path or a local folder.  On a
-product page every part gets its designation, description, an interactive 3D
-view of its STL (three.js, loaded from a CDN, with the shaded PNGs as the
-fallback), the measured summary, the CadQuery script and downloads of every
-CAD file.
+Cards drill down a level; a breadcrumb on every page leads back up, and all
+links are relative, so the site works from any base URL — a GitHub Pages
+project path or a local folder.  3D views use three.js, loaded from a CDN,
+with the shaded PNGs as the fallback.
 """
 
 from __future__ import annotations
@@ -62,7 +64,8 @@ class Part:
 
 @dataclass
 class Assembly:
-    """An assembly: either sub-assemblies or (a leaf) parts, in order."""
+    """An assembly: either sub-assemblies or (a leaf) parts, in order, and
+    optionally its assembled model."""
 
     slug: str
     title: str
@@ -77,17 +80,9 @@ class Assembly:
 
 
 @dataclass
-class Product:
-    """A product: its top-level assemblies, in order."""
-
-    slug: str
-    title: str
-    blurb: str = ""
-    assemblies: list[Assembly] = field(default_factory=list)
-
-    @property
-    def n_parts(self) -> int:
-        return sum(a.n_parts for a in self.assemblies)
+class Product(Assembly):
+    """A product: the top of the breakdown.  Like an assembly, but it may hold
+    assemblies and parts of its own side by side."""
 
     def chains(self) -> Iterator[tuple[Assembly, ...]]:
         """Every assembly, as the chain from the top-level one down to it."""
@@ -98,16 +93,20 @@ class Product:
         for top in self.assemblies:
             yield from visit((top,))
 
+    def nodes(self) -> Iterator[tuple[Assembly, ...]]:
+        """The product (as the empty chain) and every assembly below it."""
+        yield ()
+        yield from self.chains()
+
     def walk(self) -> Iterator[tuple[tuple[Assembly, ...], Part]]:
-        """Every part with the chain of assemblies above it, depth first."""
-        def visit(chain):
-            node = chain[-1]
-            for sub in node.assemblies:
-                yield from visit(chain + (sub,))
-            for part in node.parts:
+        """Every part with the chain of assemblies above it (empty for the
+        product's own parts), depth first."""
+        for chain in self.nodes():
+            for part in self.node(chain).parts:
                 yield chain, part
-        for top in self.assemblies:
-            yield from visit((top,))
+
+    def node(self, chain: tuple[Assembly, ...]) -> Assembly:
+        return chain[-1] if chain else self
 
 
 def read_part(run_dir: Path, name: str | None = None) -> Part:
@@ -147,23 +146,19 @@ def _title(script: str, fallback: str) -> str:
     return fallback.replace("_", " ")
 
 
-def _anchor(*slugs: str) -> str:
-    return "--".join(slugs)
-
-
-def chain_dir(chain: tuple[Assembly, ...]) -> Path:
-    return Path(*(a.slug for a in chain))
-
-
 def designation(product: Product, chain: tuple[Assembly, ...], part: Part | None = None) -> str:
     """``PRODUCT/assembly/.../part``: how a part (or assembly) is named and addressed."""
     return "/".join([product.slug, *(a.slug for a in chain), *([part.name] if part else [])])
 
 
 def product_dir(product: Product) -> str:
-    """Where a product's page lives, relative to the site root; its parts'
-    files sit below it, at ``<assembly>/.../<part>/``."""
+    """Where a product's page lives, relative to the site root; everything in
+    it sits below, one directory per level."""
     return f"products/{product.slug}"
+
+
+def node_dir(product: Product, chain: tuple[Assembly, ...]) -> Path:
+    return Path(product_dir(product), *(a.slug for a in chain))
 
 
 def _check_unique(products: list[Product]) -> None:
@@ -171,47 +166,46 @@ def _check_unique(products: list[Product]) -> None:
         if len(set(slugs)) != len(slugs):
             raise ValueError(f"{kind} names must be unique, got {slugs}")
 
-    def visit(where, assemblies):
-        check(f"assembly in {where}", [a.slug for a in assemblies])
-        for a in assemblies:
-            here = f"{where}/{a.slug}"
-            check(f"part or sub-assembly in {here}",
-                  [x.slug for x in a.assemblies] + [p.name for p in a.parts])
-            visit(here, a.assemblies)
-
     check("product", [p.slug for p in products])
     for p in products:
-        visit(p.slug, p.assemblies)
+        for chain in p.nodes():
+            node = p.node(chain)
+            check(f"part or assembly in {designation(p, chain)}",
+                  [a.slug for a in node.assemblies] + [x.name for x in node.parts])
 
 
 def build_site(products: list[Product], site_dir: Path) -> Path:
-    """Write the overview, one page per product, and every part's files."""
+    """Write the overview, a page per product, assembly and part, and every
+    part's and assembled model's files."""
     site_dir = Path(site_dir)
-    products = [p for p in products if p.n_parts]
+    products = [p for p in products if p.n_parts or p.model]
     if not products:
         raise ValueError("no parts to publish")
     _check_unique(products)
-    for i, product in enumerate(products):
-        page_dir = site_dir / product_dir(product)
-        published = [(chain, part, chain_dir(chain) / part.name) for chain, part in product.walk()]
-        published += [(chain, chain[-1].model, chain_dir(chain) / ASSEMBLY_DIR)
-                      for chain in product.chains() if chain[-1].model]
-        for _, part, rel in published:
-            target = page_dir / rel
-            target.mkdir(parents=True, exist_ok=True)
-            for filename in _published(part):
-                shutil.copyfile(part.cad_dir / filename, target / filename)
-        siblings = (products[i - 1] if i > 0 else None,
-                    products[i + 1] if i + 1 < len(products) else None)
-        (page_dir / "index.html").write_text(render_product(product, siblings))
+    for product in products:
+        for chain in product.nodes():
+            node, here = product.node(chain), site_dir / node_dir(product, chain)
+            here.mkdir(parents=True, exist_ok=True)
+            if node.model:
+                _copy(node.model, here / ASSEMBLY_DIR)
+            (here / "index.html").write_text(render_node(product, chain))
+            for part in node.parts:
+                _copy(part, here / part.name)
+                (here / part.name / "index.html").write_text(render_part(product, chain, part))
     index = site_dir / "index.html"
     index.write_text(render_overview(products))
     (site_dir / ".nojekyll").write_text("")
     return index
 
 
+def _copy(part: Part, target: Path) -> None:
+    target.mkdir(parents=True, exist_ok=True)
+    for filename in _published(part):
+        shutil.copyfile(part.cad_dir / filename, target / filename)
+
+
 # --------------------------------------------------------------------------
-# HTML
+# HTML pieces
 # --------------------------------------------------------------------------
 def _e(text) -> str:
     return html.escape(str(text), quote=True)
@@ -226,17 +220,19 @@ def _num(value: float) -> str:
     return f"{value:,.1f}".rstrip("0").rstrip(".") if value % 1 else f"{value:,.0f}"
 
 
-def _plural(n: int, word: str) -> str:
-    return f"{n} {word}{'' if n == 1 else 's'}"
+def _plural(n: int, word: str, plural: str | None = None) -> str:
+    return f"{n} {word if n == 1 else (plural or word + 's')}"
+
+
+def _size(summary: dict) -> str:
+    return " × ".join(_num(v) for v in summary["bounding_box"]["size"]) + " mm"
 
 
 def _summary_rows(summary: dict) -> str:
-    bb = summary["bounding_box"]
-    size = " × ".join(_num(v) for v in bb["size"])
     faces = ", ".join(f"{n} {k.lower()}" for k, n in summary["face_types"].items())
     regions = summary.get("regions") or {}
     rows = [
-        ("Size (x × y × z)", f"{size} mm"),
+        ("Size (x × y × z)", _size(summary)),
         ("Volume", f"{_num(summary['volume_mm3'])} mm³"),
         ("Surface area", f"{_num(summary['surface_area_mm2'])} mm²"),
         ("Solids", str(summary["n_solids"])),
@@ -247,7 +243,7 @@ def _summary_rows(summary: dict) -> str:
 
 
 def _components_table(summary: dict) -> str:
-    """An assembly model's components and whether any of them overlap."""
+    """An assembled model's components and whether any of them overlap."""
     rows = "".join(
         f"<tr><th scope=row>{_e(c['name'])}</th><td>{_num(c['volume_mm3'])} mm³</td></tr>"
         for c in summary.get("components", [])
@@ -258,43 +254,39 @@ def _components_table(summary: dict) -> str:
                          f"{_num(c['volume_mm3'])} mm³</li>" for c in clashes)
     else:
         status = "<li class=fit>No interference: no two components share volume.</li>"
+    contacts = summary.get("contacts", [])
     status += "".join(f"<li class=touch>{_e(c['a'])} and {_e(c['b'])} touch over "
-                      f"{_num(c['area_mm2'])} mm²</li>" for c in summary.get("contacts", []))
-    return (f"<h4>Components</h4><table>{rows}</table>"
-            f"<h4>Fit</h4><ul class=fit-list>{status}</ul>")
+                      f"{_num(c['area_mm2'])} mm²</li>" for c in contacts)
+    verdict = (_plural(len(clashes), "interference", "interferences") if clashes
+               else "no interference")
+    line = (f"{_plural(len(summary.get('components', [])), 'component')} · {verdict} · "
+            f"{_plural(len(contacts), 'contact')}")
+    return (f'<details class="fit-details{" clashing" if clashes else ""}"{" open" if clashes else ""}>'
+            f"<summary><h4>Components and fit</h4><span class=fit-line>{_e(line)}</span></summary>"
+            f"<table>{rows}</table><ul class=fit-list>{status}</ul></details>")
 
 
-def _part_section(product: Product, chain: tuple[Assembly, ...], part: Part, *,
-                  model: bool = False) -> str:
-    """A part, or (``model=True``) an assembly's assembled model."""
-    slugs = [a.slug for a in chain]
-    leaf = ASSEMBLY_DIR if model else part.name
-    base = "/".join([*slugs, leaf])  # relative to the product page
+def _detail(part: Part, base: str, *, model: bool = False) -> str:
+    """The 3D view, facts, downloads and script of a part or an assembled model;
+    ``base`` is where its files are, relative to the page."""
+    prefix = f"{base}/" if base else ""
     downloads = "".join(
-        f'<li><a href="{base}/{f}" download><span class=fmt>{_e(label)}</span>'
+        f'<li><a href="{prefix}{f}" download><span class=fmt>{_e(label)}</span>'
         f"<span class=note>{_e(note)}</span></a></li>"
         for f, label, note in [*DOWNLOADS, (part.script_name, part.script_name, SCRIPT_NOTE)]
     )
-    anchor = _anchor(*slugs, "assembled") if model else _anchor(*slugs, part.name)
-    eyebrow = "Assembled model" if model else "Part"
-    tag = designation(product, chain) if model else designation(product, chain, part)
-    extra = _components_table(part.summary) if model else ""
     stls = [c["stl"] for c in part.summary.get("components", []) if c.get("stl")] if model else []
-    stl = " ".join(f"{base}/{f}" for f in stls) or f"{base}/part.stl"
+    stl = " ".join(f"{prefix}{f}" for f in stls) or f"{prefix}part.stl"
     description = (
         f"<div class=description><h4>Description</h4>{_paragraphs(part.description)}</div>"
         if part.description else ""
     )
+    extra = _components_table(part.summary) if model else ""
     return f"""
-<section class="part{' model' if model else ''}" id="{_e(anchor)}">
-  <header class=part-head>
-    <p class=eyebrow>{eyebrow}</p>
-    <h3>{_e(part.title)}</h3>
-    <code class=slug>{_e(tag)}</code>
-  </header>
+<section class="part{' model' if model else ''}">
   <div class=part-grid>
     <figure class=viewer data-stl="{_e(stl)}">
-      <img src="{base}/part.png" alt="Shaded view of {_e(part.title)}" class=fallback>
+      <img src="{prefix}part.png" alt="Shaded view of {_e(part.title)}" class=fallback>
       <figcaption>Drag to orbit · scroll to zoom · <button type=button class=reset>reset view</button></figcaption>
     </figure>
     <div class=facts>
@@ -309,8 +301,8 @@ def _part_section(product: Product, chain: tuple[Assembly, ...], part: Part, *,
   <details class=views>
     <summary>Static views</summary>
     <div class=view-pair>
-      <img src="{base}/part.png" alt="From the front, right and above" loading=lazy>
-      <img src="{base}/part_rear_below.png" alt="From the rear, left and below" loading=lazy>
+      <img src="{prefix}part.png" alt="From the front, right and above" loading=lazy>
+      <img src="{prefix}part_rear_below.png" alt="From the rear, left and below" loading=lazy>
     </div>
   </details>
   <details class=code>
@@ -320,53 +312,82 @@ def _part_section(product: Product, chain: tuple[Assembly, ...], part: Part, *,
 </section>"""
 
 
-def _counts(assembly: Assembly) -> str:
+def _thumb(node: Assembly) -> str:
+    """A picture for a node, relative to its own directory: its assembled model,
+    else its first part, else the first picture further down."""
+    if node.model:
+        return f"{ASSEMBLY_DIR}/part.png"
+    if node.parts:
+        return f"{node.parts[0].name}/part.png"
+    for sub in node.assemblies:
+        if sub.n_parts or sub.model:
+            return f"{sub.slug}/{_thumb(sub)}"
+    return ""
+
+
+def _counts(node: Assembly) -> str:
     bits = []
-    if assembly.assemblies:
-        bits.append(_plural(len(assembly.assemblies), "sub-assembly").replace("assemblys", "assemblies"))
-    bits.append(_plural(assembly.n_parts, "part"))
-    if assembly.model:
-        bits.append("assembled model")
-    return " · ".join(bits)
+    if node.assemblies:
+        bits.append(_plural(len(node.assemblies), "assembly", "assemblies"))
+    if node.parts:
+        bits.append(_plural(len(node.parts), "part"))
+    return " · ".join(bits) or "empty"
 
 
-def _assembly_section(product: Product, chain: tuple[Assembly, ...]) -> str:
-    assembly = chain[-1]
-    depth = len(chain)  # 1 for a top-level assembly
-    kind = "Assembly" if depth == 1 else "Sub-assembly"
-    inner = _part_section(product, chain, assembly.model, model=True) if assembly.model else ""
-    inner += "".join(_assembly_section(product, chain + (sub,)) for sub in assembly.assemblies)
-    inner += "".join(_part_section(product, chain, p) for p in assembly.parts)
-    blurb = _paragraphs(assembly.blurb) if assembly.blurb else ""
+def _card(href: str, thumb: str, kind: str, title: str, slug: str, meta: str) -> str:
+    image = f'<img src="{_e(thumb)}" alt="" loading=lazy>' if thumb else ""
     return f"""
-<section class="assembly depth-{min(depth, 3)}" id="{_e(_anchor(*(a.slug for a in chain)))}">
-  <header class=assembly-head>
-    <p class=eyebrow>{kind} <code>{_e(designation(product, chain))}</code></p>
-    <h2>{_e(assembly.title)}</h2>
-    <span class=count>{_counts(assembly)}</span>
-    {blurb}
-  </header>{inner}
-</section>"""
+<li class=item-card>
+  <a href="{_e(href)}">
+    <span class=thumb>{image}</span>
+    <span class=card-body>
+      <span class=kind>{_e(kind)}</span>
+      <span class=item-name>{_e(title)}</span>
+      <code class=slug>{_e(slug)}</code>
+      <span class=count>{_e(meta)}</span>
+    </span>
+  </a>
+</li>"""
 
 
-def _tree_items(chain: tuple[Assembly, ...]) -> str:
-    assembly = chain[-1]
-    slugs = [a.slug for a in chain]
-    subs = "".join(_tree_items(chain + (sub,)) for sub in assembly.assemblies)
-    parts = "".join(f'<li class=leaf><a href="#{_e(_anchor(*slugs, p.name))}">{_e(p.title)}</a></li>'
-                    for p in assembly.parts)
-    if assembly.model:
-        parts = (f'<li class="leaf model"><a href="#{_e(_anchor(*slugs, "assembled"))}">'
-                 f"Assembled model</a></li>") + parts
-    return (f'<li><a href="#{_e(_anchor(*slugs))}">{_e(assembly.title)}</a>'
-            f"<ul>{subs}{parts}</ul></li>")
+def _contents(product: Product, chain: tuple[Assembly, ...]) -> str:
+    """Cards for what one level holds: its assemblies, then its parts."""
+    node = product.node(chain)
+    kind = "Sub-assembly" if chain else "Assembly"
+    cards = [
+        _card(f"{a.slug}/index.html", f"{a.slug}/{_thumb(a)}" if _thumb(a) else "", kind,
+              a.title, designation(product, chain + (a,)), _counts(a))
+        for a in node.assemblies
+    ] + [
+        _card(f"{p.name}/index.html", f"{p.name}/part.png", "Part", p.title,
+              designation(product, chain, p), _size(p.summary))
+        for p in node.parts
+    ]
+    if not cards:
+        return ""
+    return (f'<section class=contents><h2>Contents <span class=count>{_counts(node)}</span></h2>'
+            f'<ul class=item-grid>{"".join(cards)}</ul></section>')
 
 
-def _product_tree(product: Product) -> str:
-    items = "".join(_tree_items((a,)) for a in product.assemblies)
-    return (f'<nav class=tree aria-label="{_e(product.title)} breakdown">'
-            f'<a class=back href="../../index.html">← All products</a>'
-            f'<p class=eyebrow>{_e(product.title)}</p><ul>{items}</ul></nav>')
+def _breadcrumb(product: Product, chain: tuple[Assembly, ...], root: str,
+                current: str | None) -> str:
+    """neoBotics products › PB4 › Chassis › … — every level a link but the page itself."""
+    levels = [("neoBotics products", f"{root}index.html"),
+              (product.title, f"{root}{product_dir(product)}/index.html")]
+    for depth, a in enumerate(chain, start=1):
+        path = node_dir(product, chain[:depth]).as_posix()
+        levels.append((a.title, f"{root}{path}/index.html"))
+    if current is None:  # the last level is this page
+        *links, (here, _) = levels
+    else:
+        links, here = levels, current
+    items = "".join(f'<li><a href="{_e(href)}">{_e(title)}</a></li>' for title, href in links)
+    return (f"<nav class=crumbs-bar aria-label=Breadcrumb><ol>{items}"
+            f"<li aria-current=page>{_e(here)}</li></ol></nav>")
+
+
+def _up(title: str, href: str) -> str:
+    return f'<p class=up-link><a class=back href="{_e(href)}">← Back to {_e(title)}</a></p>'
 
 
 _ICON = ("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E"
@@ -402,75 +423,72 @@ def _page(title: str, description: str, body: str, *, viewer: bool) -> str:
 """
 
 
-def _product_counts(product: Product) -> str:
-    n = len(product.assemblies)
-    return f"{n} {'assembly' if n == 1 else 'assemblies'} · {_plural(product.n_parts, 'part')}"
+def _root(product: Product, chain: tuple[Assembly, ...], extra: int = 0) -> str:
+    """The relative path from a page up to the site root."""
+    return "../" * (2 + len(chain) + extra)
 
 
-def render_product(product: Product, siblings: tuple[Product | None, Product | None] = (None, None)) -> str:
-    """One product's page: breadcrumb back to the overview, its assembly tree and parts."""
-    cards = "".join(
-        f'<li><a href="#{_e(a.slug)}"><span class=card-title>{_e(a.title)}</span>'
-        f"<span class=count>{_counts(a)}</span></a></li>"
-        for a in product.assemblies
-    )
-    assemblies = "".join(_assembly_section(product, (a,)) for a in product.assemblies)
-    blurb = _paragraphs(product.blurb) if product.blurb else ""
-    prev, nxt = siblings
-    pager = "".join([
-        f'<a class=prev href="../{_e(prev.slug)}/index.html"><small>Previous product</small>'
-        f"<span>← {_e(prev.title)}</span></a>" if prev else "<span></span>",
-        '<a class=up href="../../index.html"><small>Back to</small><span>All products</span></a>',
-        f'<a class=next href="../{_e(nxt.slug)}/index.html"><small>Next product</small>'
-        f"<span>{_e(nxt.title)} →</span></a>" if nxt else "<span></span>",
-    ])
+# --------------------------------------------------------------------------
+# pages
+# --------------------------------------------------------------------------
+def render_node(product: Product, chain: tuple[Assembly, ...] = ()) -> str:
+    """A product's or an assembly's page: its assembled model, then its contents."""
+    node = product.node(chain)
+    root = _root(product, chain)
+    if chain:
+        kind = "Assembly" if len(chain) == 1 else "Sub-assembly"
+        parent_title = product.node(chain[:-1]).title
+    else:
+        kind, parent_title = "Product", "all products"
+    model = ""
+    if node.model:
+        model = (f'<h2 class=section-title>Assembled model '
+                 f'<span class=muted>{_e(node.model.title)}</span></h2>'
+                 + _detail(node.model, ASSEMBLY_DIR, model=True))
+    blurb = _paragraphs(node.blurb) if node.blurb else ""
     body = f"""<header class="site-head compact">
   <div class=wrap>
-    <nav class=crumbs-bar aria-label=Breadcrumb>
-      <ol><li><a href="../../index.html">neoBotics products</a></li>
-      <li aria-current=page>{_e(product.title)}</li></ol>
-    </nav>
-    <p class=eyebrow>Product <code>{_e(product.slug)}</code></p>
-    <h1 class=product-title>{_e(product.title)}</h1>
-    <p class=count>{_product_counts(product)}</p>
+    {_breadcrumb(product, chain, root, None)}
+    <p class=eyebrow>{kind} <code>{_e(designation(product, chain))}</code></p>
+    <h1 class=product-title>{_e(node.title)}</h1>
+    <p class=count>{_counts(node)}{' · assembled model' if node.model else ''}</p>
     {blurb}
-    <ul class=cards>{cards}</ul>
   </div>
 </header>
-<div class="wrap layout">
-  {_product_tree(product)}
-  <main>{assemblies}
-    <nav class=pager aria-label="Other products">{pager}</nav>
-  </main>
-</div>"""
-    return _page(f"{product.title} · neoBotics", f"{product.title}: its assemblies and parts, "
-                 "built as CadQuery B-rep code.", body, viewer=True)
+<main class=wrap>
+  {_contents(product, chain)}
+  {model}
+  {_up(parent_title, '../index.html')}
+</main>"""
+    return _page(f"{node.title} · neoBotics", f"{node.title}: its assembled model and contents, "
+                 "built as CadQuery B-rep code.", body, viewer=bool(node.model))
+
+
+def render_part(product: Product, chain: tuple[Assembly, ...], part: Part) -> str:
+    """A part's own page: everything about it."""
+    root = _root(product, chain, extra=1)
+    parent = product.node(chain)
+    body = f"""<header class="site-head compact">
+  <div class=wrap>
+    {_breadcrumb(product, chain, root, part.title)}
+    <p class=eyebrow>Part <code>{_e(designation(product, chain, part))}</code></p>
+    <h1 class=product-title>{_e(part.title)}</h1>
+    <p class=count>{_e(_size(part.summary))}</p>
+  </div>
+</header>
+<main class=wrap>
+  {_detail(part, "")}
+  {_up(parent.title, '../index.html')}
+</main>"""
+    return _page(f"{part.title} · neoBotics", f"{part.title}: built as CadQuery B-rep code.",
+                 body, viewer=True)
 
 
 def _product_card(product: Product) -> str:
-    href = f"{product_dir(product)}/index.html"
-    modelled = next((c for c in product.chains() if c[-1].model), None)
-    if modelled:  # an assembled model shows the product best
-        thumb = "/".join([product_dir(product), *(a.slug for a in modelled), ASSEMBLY_DIR, "part.png"])
-    else:
-        chain, first = next(product.walk())
-        thumb = "/".join([product_dir(product), *(a.slug for a in chain), first.name, "part.png"])
-    assemblies = "".join(f"<li>{_e(a.title)} <span class=count>{a.n_parts}</span></li>"
-                         for a in product.assemblies)
-    blurb = _paragraphs(product.blurb) if product.blurb else ""
-    return f"""
-<li class=product-card>
-  <a href="{_e(href)}">
-    <span class=thumb><img src="{_e(thumb)}" alt="" loading=lazy></span>
-    <span class=card-body>
-      <span class=product-name>{_e(product.title)}</span>
-      <span class=count>{_product_counts(product)}</span>
-      <span class=card-blurb>{blurb}</span>
-      <ul class=card-cats>{assemblies}</ul>
-      <span class=open>Open {_e(product.title)} →</span>
-    </span>
-  </a>
-</li>"""
+    thumb = _thumb(product)
+    return _card(f"{product_dir(product)}/index.html",
+                 f"{product_dir(product)}/{thumb}" if thumb else "", "Product",
+                 product.title, product.slug, _counts(product))
 
 
 def render_overview(products: list[Product]) -> str:
@@ -490,11 +508,10 @@ def render_overview(products: list[Product]) -> str:
   </div>
 </header>
 <main class=wrap>
-  <div class=overview-head>
-    <h2>Products</h2>
-    <span class=count>{_plural(len(products), 'product')} · {_plural(n_parts, 'part')}</span>
-  </div>
-  <ul class=product-grid>{cards}</ul>
+  <section class=contents>
+    <h2>Products <span class=count>{_plural(len(products), 'product')} · {_plural(n_parts, 'part')}</span></h2>
+    <ul class=item-grid>{cards}</ul>
+  </section>
 </main>"""
     return _page("neoBotics products", "Products, their assemblies and parts, built from "
                  "natural-language descriptions as CadQuery B-rep code.", body, viewer=False)
@@ -609,6 +626,30 @@ overflow:hidden;background:var(--panel);text-decoration:none;color:var(--ink)}
 .part-head h3{margin:0;font-size:1.2rem}
 .facts h4,.description h4{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 6px}
 section[id]{scroll-margin-top:12px}
+.section-title{font-size:1.15rem;margin:26px 0 0}
+.section-title .muted{font-weight:400;font-size:.95rem;margin-left:6px}
+.contents{margin:30px 0 8px}
+.contents h2{font-size:1.25rem;margin:0 0 12px;display:flex;align-items:baseline;gap:10px}
+.contents h2 .count{font-weight:400}
+.item-grid{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
+.item-card a{display:flex;flex-direction:column;height:100%;border:1px solid var(--line);border-radius:12px;
+overflow:hidden;background:var(--panel);text-decoration:none;color:var(--ink)}
+.item-card a:hover{border-color:var(--accent)}
+.item-card a:hover .item-name{color:var(--accent)}
+.item-card .card-body{display:flex;flex-direction:column;gap:3px;padding:12px 14px 14px}
+.kind{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+.item-name{font-size:1.08rem;font-weight:650}
+.item-card .slug{font-size:.78rem}
+.up-link{margin:28px 0 8px}
+.fit-details{margin:0 0 16px;border-top:0;padding-top:0}
+.fit-details summary{list-style:none;display:flex;flex-direction:column;gap:2px;cursor:pointer}
+.fit-details summary::-webkit-details-marker{display:none}
+.fit-details summary h4{margin:0}
+.fit-line{font-size:.92rem;color:var(--ink)}
+.fit-line::after{content:" ▸";color:var(--muted)}
+.fit-details[open] .fit-line::after{content:" ▾"}
+.fit-details table{margin-top:8px}
+.clashing .fit-line{color:#c0392b;font-weight:600}
 .assembly{margin-top:28px}
 .assembly .assembly{margin:22px 0 0 0;padding-left:16px;border-left:3px solid var(--line)}
 .assembly-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 12px;border-bottom:2px solid var(--line);padding-bottom:8px}

@@ -14,6 +14,8 @@ the user's instructions for one part from words to a published 3D model:
 
 ```
 products/<PRODUCT>/product.md                       "# Title" + blurb
+products/<PRODUCT>/assembly.py                      optional: the whole product, assembled
+products/<PRODUCT>/<part>/...                       a part of the product itself (e.g. PB4/lid)
 products/<PRODUCT>/<assembly>/assembly.md           "# Title" + blurb
 products/<PRODUCT>/<assembly>/<sub>/.../assembly.md  sub-assemblies, any depth
 products/<PRODUCT>/<assembly>/.../<part>/description.md   the instructions (source of truth)
@@ -21,8 +23,9 @@ products/<PRODUCT>/<assembly>/.../<part>/part.py          the CadQuery script
 products/<PRODUCT>/<assembly>/assembly.py                 optional: the assembled model
 ```
 
-- A product holds assemblies. An assembly holds **either** sub-assemblies **or**
-  parts (it is a leaf), never both. A part never sits directly under a product.
+- A product holds assemblies **and** parts of its own (`PB4/lid`), and may have
+  an `assembly.py` for the whole product. An assembly holds **either**
+  sub-assemblies **or** parts (it is a leaf), never both.
 - A part's **designation** is its path: `PB4/chassis/lid`. An assembly's is
   its path too: `PB4/chassis`.
 - Product directories keep the user's code as given (`PB4`). Assembly and part
@@ -94,7 +97,14 @@ products/<PRODUCT>/<assembly>/assembly.py                 optional: the assemble
    `products/<PRODUCT>/<assembly>/assembly.py`:
    - **Docstring:** first line is the model's title.
    - **Load the parts:** `base = load_part("base")`, `lid = load_part("lid")`.
-     The paths are relative to the assembly directory.
+     The paths are relative to the assembly directory. A sub-assembly loads
+     the same way (`chassis = load_part("chassis")` gives its `cq.Assembly`
+     as `.result`), so a product-level `assembly.py` can place whole
+     assemblies.
+   - **Several copies of one part** (four cells): add `part.result` once per
+     copy, each with its own `name` (`battery_1` …) and `loc`. To lay a part
+     down, rotate it: `cq.Location(cq.Vector(x, y, z), cq.Vector(0, 1, 0), 90)`
+     turns its +z axis to +x.
    - **Place them:** `result = cq.Assembly(name=...)`, with `.add(part.result,
      name=..., loc=cq.Location((x, y, z)))` for each part. Derive every offset
      from the parts' own variables (`base.h - lid.lip_depth`), never from
@@ -126,9 +136,11 @@ products/<PRODUCT>/<assembly>/assembly.py                 optional: the assemble
      record it under the docstring's assumptions, and tell the user.
 
 6. **Update the site.** Run `neobotics site products --out results --site site`.
-   It rebuilds every part, then writes:
-   - `site/index.html`, the overview;
-   - `site/products/<PRODUCT>/index.html`, the product page.
+   It rebuilds every part, then writes one page per level:
+   - `site/index.html`: the overview, a card per product;
+   - `site/products/<PRODUCT>/index.html` and `.../<assembly>/index.html`:
+     each level's contents as cards, then its assembled model;
+   - `site/products/<PRODUCT>/.../<part>/index.html`: one page per part.
 
    It exits non-zero if any part fails to build. To look at the page, serve
    `site/` with `python -m http.server` and screenshot it with headless
@@ -150,7 +162,8 @@ products/<PRODUCT>/<assembly>/assembly.py                 optional: the assemble
    - the designation;
    - what was built: size and key features;
    - any assumptions you had to make;
-   - the page link: `https://anroleroux.github.io/neoBotics/products/<PRODUCT>/index.html#<assembly>--...--<part>`.
+   - the page link: `https://anroleroux.github.io/neoBotics/products/<designation>/index.html`
+     (e.g. `.../products/PB4/chassis/battery_18650/index.html`).
 
 ## Other changes
 

@@ -3,29 +3,34 @@
     products/
       PB4/                              a product; the directory name is its designation
         product.md                      "# Title", then a paragraph or two about it
+        assembly.py                     optional: the whole product, assembled
+        lid/                            a part of the product itself
+          description.md                the natural-language description
+          part.py                       the CadQuery script (B-rep code)
         chassis/                        an assembly
           assembly.md                   "# Title", then a short blurb
-          lid/                          a part: any directory holding a part.py
-            description.md              the natural-language description
-            part.py                     the CadQuery script (B-rep code)
+          assembly.py                   optional: its parts placed together
+          base/                         a part: any directory holding a part.py
+            description.md
+            part.py
         drive/                          an assembly with sub-assemblies
           assembly.md
           left_wheel/                   a sub-assembly (a leaf: it holds parts)
             assembly.md
             hub/
-              description.md
               part.py
 
-A product holds assemblies; an assembly holds either sub-assemblies or parts,
-never both, so the leaves of the breakdown are assemblies of parts.  An
-assembly may also hold an ``assembly.py``: its parts (or sub-assemblies)
-placed together as a ``cq.Assembly`` with ``load_part`` — the assembled
-model, built and shown with the assembly.  Every
-directory name is a slug and a part's *designation* is the path to it:
-``PB4/chassis/lid``.  ``product.md`` and ``assembly.md`` give the
-display title (their ``#`` heading) and blurb; without them the slug is the
-title.  Directories starting with ``.`` or ``_`` are ignored, and everything
-appears in alphabetical order of its slug.
+A product holds assemblies and parts of its own (``PB4/lid``).  An assembly
+holds either sub-assemblies or parts, never both, so the leaves of the
+breakdown are assemblies of parts.  The product, and any assembly, may also
+hold an ``assembly.py``: its contents placed together as a ``cq.Assembly``
+with ``load_part``, built and shown as that level's assembled model.
+
+Every directory name is a slug, and a part's *designation* is the path to it:
+``PB4/chassis/base``.  ``product.md`` and ``assembly.md`` give the display
+title (their ``#`` heading) and blurb; without them the slug is the title.
+Directories starting with ``.`` or ``_`` are ignored, and everything appears
+in alphabetical order of its slug.
 
 :func:`build_catalog` builds every part with :func:`neobotics.pipeline.run_script`
 into ``results/<designation>/`` and renders the site from them.
@@ -96,8 +101,9 @@ def discover(root: Path) -> list[Entry]:
     """Every part and assembly script under ``root``, depth first in slug order
     (an assembly's ``assembly.py`` comes before its own parts).
 
-    Raises ValueError for a breakdown that breaks the rules: a part directly
-    under a product, or an assembly holding both parts and sub-assemblies.
+    Raises ValueError for a breakdown that breaks the rules: an assembly
+    holding both parts and sub-assemblies, or a part holding directories.  A
+    product may hold both: its own parts and its assemblies.
     """
     root = Path(root)
     if not root.is_dir():
@@ -109,7 +115,7 @@ def discover(root: Path) -> list[Entry]:
         parts = [c for c in children if _is_part(c)]
         subs = [c for c in children if not _is_part(c)]
         where = "/".join([product, *chain])
-        if parts and subs:
+        if chain and parts and subs:  # the product itself may hold both
             raise ValueError(
                 f"{where}: an assembly holds either parts or sub-assemblies, not both "
                 f"(parts: {', '.join(p.name for p in parts)}; "
@@ -126,11 +132,7 @@ def discover(root: Path) -> list[Entry]:
             entries.append(Entry(product, chain, part.name, part / PART_SCRIPT))
 
     for product in _children(root):
-        for top in _children(product):
-            if _is_part(top):
-                raise ValueError(f"{product.name}/{top.name}: a part must sit inside an "
-                                 "assembly, not directly under the product")
-            visit(product.name, (top.name,), top)
+        visit(product.name, (), product)
     return entries
 
 
@@ -154,7 +156,7 @@ def _assemble(root: Path, built: list[tuple[Entry, object]]) -> list[Product]:
         if product is None:
             title, blurb = read_heading(root / entry.product / "product.md", entry.product)
             product = products[entry.product] = Product(entry.product, title, blurb)
-        siblings, node = product.assemblies, None
+        siblings, node = product.assemblies, product
         for depth in range(1, len(entry.assemblies) + 1):
             key = (entry.product, *entry.assemblies[:depth])
             node = nodes.get(key)
@@ -190,7 +192,8 @@ def build_catalog(root: Path, results: Path, site_dir: Path,
             log(f"FAILED {entry.designation}: {result.error.strip().splitlines()[-1]}")
             continue
         log(f"built {entry.designation}")
-        built.append((entry, read_part(out, entry.part or entry.assemblies[-1])))
+        name = entry.part or (entry.assemblies[-1] if entry.assemblies else entry.product)
+        built.append((entry, read_part(out, name)))
     index = build_site(_assemble(root, built), site_dir)
     return index, failures
 

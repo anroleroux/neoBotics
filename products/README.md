@@ -1,12 +1,19 @@
 # Products
 
 The catalogue the GitHub Pages site is built from: a product breakdown of
-products, assemblies (nested to any depth) and parts. The site has an overview
-page with a card per product, and one page per product showing its assembly
-tree and every part.
+products, assemblies (nested to any depth) and parts. The site has one page
+per level:
+- the overview, with a card per product;
+- a page per product and per assembly, showing that level's contents as cards
+  and then its assembled model;
+- a page per part.
+
+Every page has a breadcrumb back up.
 
 ```
 products/<PRODUCT>/product.md                               "# Title", then a blurb
+products/<PRODUCT>/assembly.py                              optional: the whole product, assembled
+products/<PRODUCT>/<part>/part.py                           a part of the product itself
 products/<PRODUCT>/<assembly>/assembly.md                   "# Title", then a blurb
 products/<PRODUCT>/<assembly>/<sub>/.../assembly.md          sub-assemblies, any depth
 products/<PRODUCT>/<assembly>/.../<part>/description.md     the natural-language description
@@ -15,10 +22,9 @@ products/<PRODUCT>/<assembly>/.../<part>/part.py            the CadQuery script 
 
 The rules:
 
-- A product holds assemblies.
+- A product holds assemblies, and parts of its own (`PB4/lid`).
 - An assembly holds either sub-assemblies or parts (it is a leaf), never both.
-- A part is any directory with a `part.py`. It sits inside an assembly, never
-  directly under a product.
+- A part is any directory with a `part.py`.
 
 - An assembly may also hold an `assembly.py`, its assembled model. It places
   the assembly's parts (or sub-assemblies) together as a `cq.Assembly`. It is
