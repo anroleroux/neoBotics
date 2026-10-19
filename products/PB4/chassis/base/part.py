@@ -1,14 +1,12 @@
 """Chassis base box.
 
-An open-top rectangular box with its end walls removed: a floor and the two
-long side walls, all one wall thickness, open at the top and at both ends.
-Four variables drive it: l, b, h and wall.
+An open-top rectangular box with its side walls at +-y removed: a floor and
+the two end walls at +-x, all one wall thickness, open at the top and along
+both long sides. Four variables drive it: l, b, h and wall.
 
 Assumptions where the description is silent:
-- l, b and h are the outside dimensions; the space between the side walls is
-  b - 2 wall wide and h - wall deep, and runs the full length l;
-- "the sides along the breadth" are the two end walls, which span the
-  breadth b at x = +-l/2; the long side walls along l stay;
+- l, b and h are the outside dimensions; the space between the end walls is
+  l - 2 wall long and h - wall deep, and runs the full breadth b;
 - the floor is as thick as the walls;
 - l = 120, b = 80, h = 50 and wall = 3 mm until real sizes are given;
 - the box is centred on the z axis and stands on z = 0, with l along x and b
@@ -22,16 +20,16 @@ b = 80.0  # breadth, outside, along y
 h = 50.0  # height, outside, along z
 wall = 3.0  # thickness of the walls and the floor
 
-# the space between the side walls, above the floor, through both ends
+# the space between the end walls, above the floor, through both long sides
 channel = (
     cq.Workplane("XY", origin=(0, 0, wall))
-    .box(l, b - 2 * wall, h - wall, centered=(True, True, False))
+    .box(l - 2 * wall, b, h - wall, centered=(True, True, False))
 )
 result = cq.Workplane("XY").box(l, b, h, centered=(True, True, False)).cut(channel)
 
 regions = {
-    "rim": result.faces(">Z"),  # the tops of the two side walls, where the lid sits
-    "side_walls_outside": result.faces("|Y").faces(">Y or <Y"),  # what the lid's skirts cover
+    "rim": result.faces(">Z"),  # the tops of the two end walls, where the lid sits
+    "sides": result.faces(">Y or <Y"),  # the open long sides' edges, where the lid's skirts meet
     "bottom": result.faces("<Z"),
 }
 

@@ -1,8 +1,8 @@
 """Chassis box with its lid.
 
 The base box with the lid seated on top: the lid's plate rests on the rims
-of the box's side walls, its skirts cover the walls' outsides down to the
-base's bottom, and its lip drops between the walls.  Both parts come from their own
+of the box's end walls (+-x), its skirts close the box's open long sides (+-y)
+down to the base's bottom, and its two lips run between the end walls.  Both parts come from their own
 scripts through load_part, so the assembly follows any change to the box's
 l, b, h or wall.
 """
