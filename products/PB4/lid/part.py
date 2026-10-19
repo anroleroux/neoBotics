@@ -1,4 +1,4 @@
-"""Chassis lid.
+"""PB4 lid.
 
 A cover that sits on the rim of the base box and wraps down its two long
 sides: a top plate with a skirt down each side, past the box's breadth by the
@@ -24,7 +24,7 @@ Assumptions where the description is silent:
 """
 import cadquery as cq
 
-box = load_part("../base")  # the box this lid fits: l, b, h, wall
+box = load_part("../chassis/base")  # the box this lid fits: l, b, h, wall
 
 # parameters, in mm
 t = box.wall  # lid thickness: plate and skirts

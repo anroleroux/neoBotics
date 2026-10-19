@@ -1,5 +1,4 @@
 # Chassis
 
-The structural enclosure of the robot: a base with end walls, open at the top
-and along both long sides, and the lid that covers it and closes the sides.
-Shown assembled and as separate parts.
+The base of the robot, open at the top and along both long sides, carrying
+four 18650 cells against its back wall.
