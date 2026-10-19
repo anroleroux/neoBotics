@@ -1,6 +1,6 @@
 ---
 name: neobotics-part
-description: Add or change a 3D part in the neoBotics product catalogue from natural-language instructions, then build its CAD (B-rep, STEP, STL, views) and update the HTML site. Use whenever the user names a product, assembly and part designation (e.g. "PB4 / chassis / base_plate", "PB4-chassis-base_plate", "in PB4, assembly drive, sub-assembly left_wheel, part hub") together with modelling instructions, or asks to add, modify, rename or rebuild a product, assembly, sub-assembly or part.
+description: Add or change a 3D part, or an assembly's assembled model, in the neoBotics product catalogue from natural-language instructions, then build its CAD (B-rep, STEP, STL, views) and update the HTML site. Use whenever the user names a product, assembly and part designation (e.g. "PB4 / chassis / lid", "PB4-chassis-lid", "in PB4, assembly drive, sub-assembly left_wheel, part hub") or an assembly designation ("PB4 / chassis: assemble the lid on the box") together with modelling instructions, or asks to add, modify, remove, rename or rebuild a product, assembly, sub-assembly or part.
 ---
 
 # Add or change a neoBotics part
@@ -18,13 +18,15 @@ products/<PRODUCT>/<assembly>/assembly.md           "# Title" + blurb
 products/<PRODUCT>/<assembly>/<sub>/.../assembly.md  sub-assemblies, any depth
 products/<PRODUCT>/<assembly>/.../<part>/description.md   the instructions (source of truth)
 products/<PRODUCT>/<assembly>/.../<part>/part.py          the CadQuery script
+products/<PRODUCT>/<assembly>/assembly.py                 optional: the assembled model
 ```
 
 - A product holds assemblies. An assembly holds **either** sub-assemblies **or**
   parts (it is a leaf), never both. A part never sits directly under a product.
-- A part's **designation** is its path: `PB4/chassis/base_plate`.
+- A part's **designation** is its path: `PB4/chassis/lid`. An assembly's is
+  its path too: `PB4/chassis`.
 - Product directories keep the user's code as given (`PB4`). Assembly and part
-  slugs are lowercase with underscores (`motor_mounts`, `base_plate`). Titles
+  slugs are lowercase with underscores (`motor_mounts`, `left_wheel`). Titles
   for display go in the markdown files.
 - `neobotics site` refuses a breakdown that breaks these rules, and names the
   offending directory.
@@ -75,10 +77,40 @@ products/<PRODUCT>/<assembly>/.../<part>/part.py          the CadQuery script
    - When changing a part, edit the existing script: change the constants and
      features the instruction touches, and keep the assumptions list current.
 
-   `products/B4/motor_mounts/nema17_bracket/part.py` is a worked example.
+   - **A part that must fit another one** (a lid on a box, a shaft in a
+     bore) reads the other part's variables instead of copying the numbers:
+     `box = load_part("../base")`, then `box.l`, `box.wall`. The path is
+     relative to the script's directory, and `load_part` is available in every
+     script. That way the fit survives a change to the other part. Put the
+     fit itself (clearance, overlap) in named constants.
 
-5. **Build and check it.** Run `neobotics build <designation>`. It writes
-   `results/<designation>/cad/`:
+   Worked examples:
+   - `products/B4/motor_mounts/nema17_bracket/part.py`: a standalone part;
+   - `products/PB4/chassis/lid/part.py`: a part sized from another with
+     `load_part`.
+
+4b. **Assembled model (`assembly.py`)**, when the user asks for parts to be
+   put together ("assemble the lid on top of the box"). Write
+   `products/<PRODUCT>/<assembly>/assembly.py`:
+   - **Docstring:** first line is the model's title.
+   - **Load the parts:** `base = load_part("base")`, `lid = load_part("lid")`.
+     The paths are relative to the assembly directory.
+   - **Place them:** `result = cq.Assembly(name=...)`, with `.add(part.result,
+     name=..., loc=cq.Location((x, y, z)))` for each part. Derive every offset
+     from the parts' own variables (`base.h - lid.lip_depth`), never from
+     copied numbers. Give each part a `color`. Set `regions = {}`.
+   - **Build:** `neobotics build <PRODUCT>/<assembly>`. The summary lists:
+     - **components**, by name, with volume and bounding box;
+     - **interference**: pairs that share volume. It must be empty unless an
+       overlap is intended;
+     - **contacts**: pairs touching over an area, in mm². A seated lid shows
+       its rim area.
+   - **Check:** fix any interference or missing contact, then look at both
+     PNGs, where each component has its own colour.
+
+5. **Build and check it.** Run `neobotics build <designation>`. For a part it
+   writes `results/<designation>/cad/` (for an assembly model,
+   `results/<designation>/_assembly/cad/`):
    - `part.brep`, `part.step`, `part.stl`;
    - `part.png` and `part_rear_below.png`;
    - `summary.json`.
@@ -110,7 +142,7 @@ products/<PRODUCT>/<assembly>/.../<part>/part.py          the CadQuery script
 8. **Commit and push.**
    - Commit only `products/` changes (and code, if any). Never commit
      `results/` or `site/`; they are build output and are git-ignored.
-   - Message: `Add PB4/chassis/base_plate: <one line>` or `Update …: <what changed>`.
+   - Message: `Add PB4/chassis/lid: <one line>` or `Update …: <what changed>`.
    - Push to the working branch. CI rebuilds every part and redeploys GitHub
      Pages on push.
 
@@ -125,8 +157,9 @@ products/<PRODUCT>/<assembly>/.../<part>/part.py          the CadQuery script
 - **Rename or move a part or assembly**: use `git mv` on the directory, then
   run steps 6–9. The designation changes with the path, so tell the user the
   new one.
-- **Remove**: `git rm -r` the directory. If an assembly is left empty, remove
-  it too. Then run steps 6–9.
+- **Remove**: `git rm -r` the directory, and search for `load_part` calls
+  that name it (`grep -rn load_part products`). If an assembly is left empty,
+  remove it too. Then run steps 6–9.
 - **Change only a title or blurb**: edit `product.md` or `assembly.md`, or
   the first docstring line for a part, then run steps 6–9.
 - **Several parts in one request**: do steps 1–5 for each part, then steps

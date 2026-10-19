@@ -5,7 +5,7 @@
         product.md                      "# Title", then a paragraph or two about it
         chassis/                        an assembly
           assembly.md                   "# Title", then a short blurb
-          base_plate/                   a part: any directory holding a part.py
+          lid/                          a part: any directory holding a part.py
             description.md              the natural-language description
             part.py                     the CadQuery script (B-rep code)
         drive/                          an assembly with sub-assemblies
@@ -17,9 +17,12 @@
               part.py
 
 A product holds assemblies; an assembly holds either sub-assemblies or parts,
-never both, so the leaves of the breakdown are assemblies of parts.  Every
+never both, so the leaves of the breakdown are assemblies of parts.  An
+assembly may also hold an ``assembly.py``: its parts (or sub-assemblies)
+placed together as a ``cq.Assembly`` with ``load_part`` — the assembled
+model, built and shown with the assembly.  Every
 directory name is a slug and a part's *designation* is the path to it:
-``PB4/chassis/base_plate``.  ``product.md`` and ``assembly.md`` give the
+``PB4/chassis/lid``.  ``product.md`` and ``assembly.md`` give the
 display title (their ``#`` heading) and blurb; without them the slug is the
 title.  Directories starting with ``.`` or ``_`` are ignored, and everything
 appears in alphabetical order of its slug.
@@ -39,20 +42,35 @@ from .pipeline import run_script
 from .site import Assembly, Product, build_site, read_part
 
 PART_SCRIPT = "part.py"
+ASSEMBLY_SCRIPT = "assembly.py"
+#: Where an assembly model is built and published, inside its assembly's
+#: directory; the leading underscore keeps it clear of every slug.
+ASSEMBLY_DIR = "_assembly"
 
 
 @dataclass
 class Entry:
-    """One part script in the tree, before it is built."""
+    """One script in the tree, before it is built: a part, or an assembly's
+    ``assembly.py`` (``part`` is None)."""
 
     product: str
     assemblies: tuple[str, ...]
-    part: str
+    part: str | None
     script: Path
 
     @property
+    def is_assembly(self) -> bool:
+        return self.part is None
+
+    @property
     def designation(self) -> str:
-        return "/".join([self.product, *self.assemblies, self.part])
+        return "/".join([self.product, *self.assemblies, *([self.part] if self.part else [])])
+
+    def out_dir(self, results: Path) -> Path:
+        """Where this script is built: ``results/<designation>`` for a part,
+        ``results/<designation>/_assembly`` for an assembly model."""
+        base = Path(results).joinpath(self.product, *self.assemblies)
+        return base / ASSEMBLY_DIR if self.is_assembly else base / self.part
 
 
 def read_heading(path: Path, fallback: str) -> tuple[str, str]:
@@ -75,7 +93,8 @@ def _is_part(directory: Path) -> bool:
 
 
 def discover(root: Path) -> list[Entry]:
-    """Every part under ``root``, depth first in slug order.
+    """Every part and assembly script under ``root``, depth first in slug order
+    (an assembly's ``assembly.py`` comes before its own parts).
 
     Raises ValueError for a breakdown that breaks the rules: a part directly
     under a product, or an assembly holding both parts and sub-assemblies.
@@ -97,8 +116,10 @@ def discover(root: Path) -> list[Entry]:
                 f"sub-assemblies: {', '.join(s.name for s in subs)})")
         for sub in subs:
             visit(product, chain + (sub.name,), sub)
+        if (directory / ASSEMBLY_SCRIPT).is_file():
+            entries.append(Entry(product, chain, None, directory / ASSEMBLY_SCRIPT))
         for part in parts:
-            stray = [c.name for c in _children(part)]
+            stray = [c.name for c in _children(part)]  # _-prefixed build output is fine
             if stray:
                 raise ValueError(f"{where}/{part.name}: a part holds no directories, "
                                  f"found {', '.join(stray)}")
@@ -114,12 +135,14 @@ def discover(root: Path) -> list[Entry]:
 
 
 def find(root: Path, designation: str) -> Entry:
-    """The part a designation such as ``PB4/chassis/base_plate`` names."""
+    """The part (``PB4/chassis/lid``) or assembly model (``PB4/chassis``) a
+    designation names."""
     wanted = designation.strip().strip("/")
     for entry in discover(root):
         if entry.designation == wanted:
             return entry
-    raise KeyError(f"no part {wanted!r} under {root} (a part is a directory with a {PART_SCRIPT})")
+    raise KeyError(f"no part or assembly model {wanted!r} under {root} (a part is a directory "
+                   f"with a {PART_SCRIPT}; an assembly model is an {ASSEMBLY_SCRIPT})")
 
 
 def _assemble(root: Path, built: list[tuple[Entry, object]]) -> list[Product]:
@@ -131,7 +154,7 @@ def _assemble(root: Path, built: list[tuple[Entry, object]]) -> list[Product]:
         if product is None:
             title, blurb = read_heading(root / entry.product / "product.md", entry.product)
             product = products[entry.product] = Product(entry.product, title, blurb)
-        siblings = product.assemblies
+        siblings, node = product.assemblies, None
         for depth in range(1, len(entry.assemblies) + 1):
             key = (entry.product, *entry.assemblies[:depth])
             node = nodes.get(key)
@@ -142,7 +165,10 @@ def _assemble(root: Path, built: list[tuple[Entry, object]]) -> list[Product]:
                 node = nodes[key] = Assembly(slug, title, blurb)
                 siblings.append(node)
             siblings = node.assemblies
-        node.parts.append(part)
+        if entry.is_assembly:
+            node.model = part
+        else:
+            node.parts.append(part)
     return list(products.values())
 
 
@@ -157,14 +183,14 @@ def build_catalog(root: Path, results: Path, site_dir: Path,
     root, results = Path(root), Path(results)
     built, failures = [], []
     for entry in discover(root):
-        out = results.joinpath(entry.product, *entry.assemblies, entry.part)
+        out = entry.out_dir(results)
         result = run_script(entry.script, out)
         if not result.ok:
             failures.append(f"{entry.designation}: {result.error}")
             log(f"FAILED {entry.designation}: {result.error.strip().splitlines()[-1]}")
             continue
         log(f"built {entry.designation}")
-        built.append((entry, read_part(out, entry.part)))
+        built.append((entry, read_part(out, entry.part or entry.assemblies[-1])))
     index = build_site(_assemble(root, built), site_dir)
     return index, failures
 

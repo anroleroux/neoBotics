@@ -50,7 +50,8 @@ def _product_page(catalogue, slug):
 # ---- the breakdown -----------------------------------------------------------
 def test_discover_walks_the_real_catalogue():
     designations = [e.designation for e in discover(PRODUCTS)]
-    assert designations == ["B4/motor_mounts/nema17_bracket", "PB4/chassis/base_plate"]
+    assert designations == ["B4/motor_mounts/nema17_bracket",
+                            "PB4/chassis", "PB4/chassis/base", "PB4/chassis/lid"]
 
 
 def test_discover_follows_sub_assemblies(tmp_path):
@@ -83,7 +84,8 @@ def test_a_part_holds_no_directories(tmp_path):
 
 
 def test_find_by_designation():
-    assert find(PRODUCTS, "PB4/chassis/base_plate/").script.name == "part.py"
+    assert find(PRODUCTS, "PB4/chassis/base/").script.name == "part.py"
+    assert find(PRODUCTS, "PB4/chassis").script.name == "assembly.py"
     with pytest.raises(KeyError):
         find(PRODUCTS, "PB4/chassis/nope")
 
@@ -107,10 +109,10 @@ def test_read_heading(tmp_path):
 
 
 def test_build_command_builds_one_part_by_designation(tmp_path, capsys):
-    assert cli_main(["build", "PB4/chassis/base_plate", "--out", str(tmp_path)]) == 0
-    cad = tmp_path / "PB4" / "chassis" / "base_plate" / "cad"
+    assert cli_main(["build", "PB4/chassis/base", "--out", str(tmp_path)]) == 0
+    cad = tmp_path / "PB4" / "chassis" / "base" / "cad"
     assert (cad / "part.step").exists()
-    assert "built PB4/chassis/base_plate" in capsys.readouterr().out
+    assert "built PB4/chassis/base" in capsys.readouterr().out
 
 
 def test_cad_run_keeps_the_description_next_to_the_script(tmp_path):

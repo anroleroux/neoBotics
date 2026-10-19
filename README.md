@@ -62,7 +62,7 @@ neobotics cad products/B4/motor_mounts/nema17_bracket/part.py --out results/nema
 neobotics view results/nema17_bracket/cad/part.stl
 
 # build one catalogue part by its designation
-neobotics build PB4/chassis/base_plate
+neobotics build PB4/chassis/lid
 
 # build every part in the catalogue and render the site: an overview page,
 # then one page per product with its assembly tree and each part's 3D viewer
@@ -86,10 +86,14 @@ part has its `description.md` and `part.py`. `product.md` and `assembly.md`
 name and describe the levels above.
 
 - **B4** has the assembly **Motor mounts** with the NEMA 17 bracket.
-- **PB4** has the assembly **Chassis** with the base plate.
+- **PB4** has the assembly **Chassis**: an open-top box (`base`, driven by
+  `l`, `b`, `h` and `wall`) and a `lid` sized from it. Its `assembly.py` seats
+  the lid on the box, and the build checks the fit.
 
-A part's designation is its path (`PB4/chassis/base_plate`).
-`neobotics build <designation>` builds just that part. See `products/README.md`.
+A part's designation is its path (`PB4/chassis/lid`).
+`neobotics build <designation>` builds just that part, or an assembly's
+assembled model (`PB4/chassis`). A script can read another part's variables
+with `load_part("../base")`. See `products/README.md`.
 
 In a Claude Code session, the `neobotics-part` skill
 (`.claude/skills/neobotics-part/SKILL.md`) takes a designation plus modelling

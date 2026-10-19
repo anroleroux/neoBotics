@@ -11,7 +11,7 @@
     neobotics view results/nema17_bracket/cad/part.stl
 
     # build one catalogue part by its designation: product/assembly/.../part
-    neobotics build PB4/chassis/base_plate
+    neobotics build PB4/chassis/lid
 
     # build every part under products/ and render the catalogue site
     # (what GitHub Pages serves)
@@ -62,7 +62,7 @@ def main(argv: list[str] | None = None) -> int:
     p_view.add_argument("--view", default="iso")
 
     p_build = sub.add_parser("build", help="build one catalogue part by its designation, "
-                                           "e.g. PB4/chassis/base_plate")
+                                           "e.g. PB4/chassis/lid")
     p_build.add_argument("designation", help="<product>/<assembly>/.../<part>")
     p_build.add_argument("--root", type=Path, default=Path("products"),
                          help="the catalogue (default: products)")
@@ -88,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
             entry = find(args.root, args.designation)
         except (OSError, KeyError, ValueError) as exc:
             parser.error(f"build: {exc}")
-        out = args.out.joinpath(entry.product, *entry.assemblies, entry.part)
+        out = entry.out_dir(args.out)
         result = run_script(entry.script, out)
         if not result.ok:
             print(f"error: {entry.designation}: {result.error}", file=sys.stderr)

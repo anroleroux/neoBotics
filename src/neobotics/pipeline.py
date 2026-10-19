@@ -28,14 +28,15 @@ from .part import BuildResult, build_part
 def run_script(script: Path, out_dir: Path) -> BuildResult:
     """Build a part script into ``out_dir/cad``.
 
-    The script is copied to ``out_dir/part.py``, and a ``description.md`` next
-    to it (a design directory) to ``out_dir/description.md``.
+    The script is copied into ``out_dir`` under its own name (``part.py`` or
+    ``assembly.py``), and a ``description.md`` next to it (a design
+    directory) to ``out_dir/description.md``.
     """
     script, out_dir = Path(script), Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     result = build_part(script, out_dir / "cad")
     if result.ok:
-        for source, target in ((script, out_dir / "part.py"),
+        for source, target in ((script, out_dir / script.name),
                                (script.parent / "description.md", out_dir / "description.md")):
             if source.exists() and source.resolve() != target.resolve():
                 shutil.copyfile(source, target)

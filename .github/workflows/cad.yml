@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       design:
-        description: 'a part designation under products/, e.g. PB4/chassis/base_plate, holding description.md, to generate with Claude'
+        description: 'a part designation under products/, e.g. PB4/chassis/lid, holding description.md, to generate with Claude'
         required: false
         default: ''
 
