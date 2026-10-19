@@ -1,18 +1,20 @@
 """Chassis box with its lid.
 
-The base box with the lid seated on top: the lid's plate rests on the box's
-rim and its lip drops into the opening.  Both parts come from their own
+The base box with the lid seated on top: the lid's plate rests on the rims
+of the box's side walls, its skirts cover the walls' outsides down to the
+base's bottom, and its lip drops between the walls.  Both parts come from their own
 scripts through load_part, so the assembly follows any change to the box's
 l, b, h or wall.
 """
 import cadquery as cq
 
 base = load_part("base")  # the open-top box, standing on z = 0
-lid = load_part("lid")  # modelled as installed, lip down, standing on z = 0
+lid = load_part("lid")  # modelled as installed: skirts stand on z = 0
 
-# the lid's plate underside sits lip_depth above its own z = 0; lifting the lid
-# by h - lip_depth puts that underside on the box rim at z = h
-lid_seat = base.h - lid.lip_depth
+# the lid's plate underside is seat_height above its own z = 0; lifting the lid
+# by h - seat_height puts that underside on the box rim at z = h (today 0: the
+# skirts reach the base's bottom)
+lid_seat = base.h - lid.seat_height
 
 result = (
     cq.Assembly(name="chassis")

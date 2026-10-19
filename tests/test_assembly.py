@@ -99,14 +99,20 @@ def test_catalog_finds_assembly_models(tmp_path):
 
 
 def test_the_pb4_chassis_lid_fits_its_box(tmp_path):
-    """The real chassis: lid seated on the box rim, lip clear of the walls."""
+    """The real chassis: the lid sits on the side walls' rims and its skirts
+    cover the walls' outsides, with the lip clear of the walls."""
     summary = _summary(build_part(CHASSIS / "assembly.py", tmp_path / "out"))
     box = _summary(build_part(CHASSIS / "base" / "part.py", tmp_path / "box"))
     assert summary["interference"] == []
     (contact,) = summary["contacts"]
-    rim = 120 * 80 - (120 - 6) * (80 - 6)  # outside minus opening, for l, b = 120, 80 and wall 3
-    assert contact["area_mm2"] == pytest.approx(rim)
-    assert summary["bounding_box"]["size"][2] == pytest.approx(box["bounding_box"]["size"][2] + 3)
+    l, h, wall = box["bounding_box"]["size"][0], box["bounding_box"]["size"][2], 3.0
+    rims, skirts = 2 * l * wall, 2 * l * h  # two wall tops; two walls' outsides
+    assert contact["area_mm2"] == pytest.approx(rims + skirts)
+    # the lid overhangs a = 5 mm at each end, adds its thickness each side and on top,
+    # and reaches the base's bottom
+    assert summary["bounding_box"]["size"] == pytest.approx(
+        [l + 10, box["bounding_box"]["size"][1] + 2 * wall, h + wall])
+    assert summary["bounding_box"]["min"][2] == pytest.approx(0)
 
 
 def test_build_command_takes_an_assembly_designation(tmp_path, capsys):
