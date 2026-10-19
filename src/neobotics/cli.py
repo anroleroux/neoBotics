@@ -1,4 +1,4 @@
-"""Command line: ``neobotics generate | cad | view | site``.
+"""Command line: ``neobotics generate | cad | build | view | site``.
 
     # NL -> CadQuery script -> BREP / STEP / STL / PNG, with Claude
     neobotics generate --description products/B4/grippers/jaw/description.md --out results/jaw
@@ -10,8 +10,11 @@
     # a shaded PNG of any BREP or STL
     neobotics view results/nema17_bracket/cad/part.stl
 
-    # build every products/<product>/<subcategory>/<part>/part.py and render
-    # the catalogue page (what GitHub Pages serves)
+    # build one catalogue part by its designation: product/assembly/.../part
+    neobotics build PB4/chassis/base_plate
+
+    # build every part under products/ and render the catalogue site
+    # (what GitHub Pages serves)
     neobotics site products --out results --site site
 """
 
@@ -58,15 +61,41 @@ def main(argv: list[str] | None = None) -> int:
     p_view.add_argument("--out", type=Path)
     p_view.add_argument("--view", default="iso")
 
+    p_build = sub.add_parser("build", help="build one catalogue part by its designation, "
+                                           "e.g. PB4/chassis/base_plate")
+    p_build.add_argument("designation", help="<product>/<assembly>/.../<part>")
+    p_build.add_argument("--root", type=Path, default=Path("products"),
+                         help="the catalogue (default: products)")
+    p_build.add_argument("--out", type=Path, default=Path("results"),
+                         help="where parts are built; this one goes to <out>/<designation> "
+                              "(default: results)")
+
     p_site = sub.add_parser("site", help="build every part in the products/ tree and render "
                                          "the catalogue site")
     p_site.add_argument("root", type=Path, nargs="?", default=Path("products"),
-                        help="<product>/<subcategory>/<part>/part.py tree (default: products)")
+                        help="<product>/<assembly>/.../<part>/part.py tree (default: products)")
     p_site.add_argument("--out", type=Path, default=Path("results"),
                         help="where the parts are built (default: results)")
     p_site.add_argument("--site", type=Path, default=Path("site"))
 
     args = parser.parse_args(argv)
+
+    if args.command == "build":
+        from .catalog import find
+        from .pipeline import run_script
+
+        try:
+            entry = find(args.root, args.designation)
+        except (OSError, KeyError, ValueError) as exc:
+            parser.error(f"build: {exc}")
+        out = args.out.joinpath(entry.product, *entry.assemblies, entry.part)
+        result = run_script(entry.script, out)
+        if not result.ok:
+            print(f"error: {entry.designation}: {result.error}", file=sys.stderr)
+            return 1
+        print(f"built {entry.designation}")
+        _print_build(out, result.summary, result.files)
+        return 0
 
     if args.command == "site":
         from .catalog import main as catalog_main

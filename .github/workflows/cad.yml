@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       design:
-        description: 'a part under products/, as <product>/<subcategory>/<part>, holding description.md, to generate with Claude'
+        description: 'a part designation under products/, e.g. PB4/chassis/base_plate, holding description.md, to generate with Claude'
         required: false
         default: ''
 
@@ -40,8 +40,8 @@ jobs:
       - name: Run tests
         run: python -m pytest -q
 
-      # every products/<product>/<subcategory>/<part>/part.py, then the
-      # catalogue page; a part that fails to build fails the job
+      # every part under products/ (<product>/<assembly>/.../<part>/part.py),
+      # then the catalogue pages; a part that fails to build fails the job
       - name: Build the parts and the site
         run: neobotics site products --out results --site site
 

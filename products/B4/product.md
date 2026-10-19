@@ -1,4 +1,4 @@
 # B4
 
-The B4 product line: its parts, grouped by subcategory. Each part is built
-from a plain-language description as CadQuery B-rep code.
+The B4 product line, broken down into assemblies and parts. Each part is
+built from a plain-language description as CadQuery B-rep code.

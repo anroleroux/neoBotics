@@ -61,8 +61,11 @@ neobotics cad products/B4/motor_mounts/nema17_bracket/part.py --out results/nema
 # a shaded PNG of any BREP or STL (--view iso | rear_below)
 neobotics view results/nema17_bracket/cad/part.stl
 
+# build one catalogue part by its designation
+neobotics build PB4/chassis/base_plate
+
 # build every part in the catalogue and render the site: an overview page,
-# then one page per product with each part's 3D viewer, measurements, downloads
+# then one page per product with its assembly tree and each part's 3D viewer
 neobotics site products --out results --site site
 ```
 
@@ -77,10 +80,21 @@ set.
 
 ### The catalogue
 
-Parts live in `products/<product>/<subcategory>/<part>/`, each with its
-`description.md` and `part.py`. `product.md` and `category.md` name a product
-and a subcategory and describe them. The first product is **B4**, and its first
-subcategory is **Motor mounts**. See `products/README.md`.
+Parts live in a product breakdown, `products/<PRODUCT>/<assembly>/.../<part>/`.
+Assemblies nest to any depth, and the leaf assemblies hold the parts. Each
+part has its `description.md` and `part.py`. `product.md` and `assembly.md`
+name and describe the levels above.
+
+- **B4** has the assembly **Motor mounts** with the NEMA 17 bracket.
+- **PB4** has the assembly **Chassis** with the base plate.
+
+A part's designation is its path (`PB4/chassis/base_plate`).
+`neobotics build <designation>` builds just that part. See `products/README.md`.
+
+In a Claude Code session, the `neobotics-part` skill
+(`.claude/skills/neobotics-part/SKILL.md`) takes a designation plus modelling
+instructions. It writes or edits the description and the script, builds and
+checks the part, updates the site, and commits.
 
 `generate` options: `--max-attempts N` (scripts in all, repairs included),
 `--review N` (review rounds), `--model`, `--effort low|medium|high|xhigh|max`
@@ -135,8 +149,8 @@ same names can carry an assembly's mates or a study's loads.
 | `neobotics.cadview` | headless shaded rendering (numpy z-buffer, no OpenGL), adapted from topocombo's `cadview` |
 | `neobotics.pipeline` | lays out a run directory around the two stages |
 | `neobotics.site` | the static page: an interactive three.js view of each part's STL, its description, measurements, script and downloads |
-| `neobotics.catalog` | reads the `products/` tree, builds every part, renders the page |
-| `neobotics.cli` | `neobotics generate / cad / view / site` |
+| `neobotics.catalog` | reads the `products/` breakdown (assemblies to any depth), builds every part, renders the site |
+| `neobotics.cli` | `neobotics generate / cad / build / view / site` |
 
 The model sits behind a small `Coder` interface (`(system, messages) ->
 (text, content)`), so the tests drive the whole loop with scripted replies and
@@ -147,17 +161,17 @@ real CadQuery builds, with no network.
 `.github/workflows/cad.yml` runs on every push and pull request:
 
 1. it runs the tests;
-2. `neobotics site` builds every `products/*/*/*/part.py` and renders the
-   page; a part that fails to build fails the job;
+2. `neobotics site` builds every part under `products/` and renders the
+   pages; a part that fails to build fails the job;
 3. it uploads the CAD files as the `parts` artifact.
 
 On a push, it also deploys the site to GitHub Pages:
 
 - `index.html`, the overview: one card per product, with a thumbnail, its
-  subcategories and part counts;
-- `products/<product>/index.html`, one page per product: its subcategories
-  and parts, each part with a 3D view you can orbit and STEP / STL / BREP /
-  script downloads.
+  assemblies and part counts;
+- `products/<product>/index.html`, one page per product: its assembly tree.
+  Each part shows its designation, a 3D view you can orbit, and STEP / STL /
+  BREP / script downloads.
 
 Every product page leads back to the overview through a breadcrumb, an "All
 products" link and a previous / all products / next pager. Links are
