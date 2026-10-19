@@ -61,8 +61,8 @@ neobotics cad products/B4/motor_mounts/nema17_bracket/part.py --out results/nema
 # a shaded PNG of any BREP or STL (--view iso | rear_below)
 neobotics view results/nema17_bracket/cad/part.stl
 
-# build every part in the catalogue and render the page: products, their
-# subcategories, and each part with a 3D viewer, measurements, script, downloads
+# build every part in the catalogue and render the site: an overview page,
+# then one page per product with each part's 3D viewer, measurements, downloads
 neobotics site products --out results --site site
 ```
 
@@ -151,9 +151,17 @@ real CadQuery builds, with no network.
    page; a part that fails to build fails the job;
 3. it uploads the CAD files as the `parts` artifact.
 
-On a push, it also deploys the page to GitHub Pages. The page is grouped by
-product, then subcategory. Each part has a 3D view you can orbit and STEP /
-STL / BREP / script downloads. Pages
+On a push, it also deploys the site to GitHub Pages:
+
+- `index.html`, the overview: one card per product, with a thumbnail, its
+  subcategories and part counts;
+- `products/<product>/index.html`, one page per product: its subcategories
+  and parts, each part with a 3D view you can orbit and STEP / STL / BREP /
+  script downloads.
+
+Every product page leads back to the overview through a breadcrumb, an "All
+products" link and a previous / all products / next pager. Links are
+relative, so the site also works opened from a local folder. Pages
 must be set to deploy from GitHub Actions (Settings → Pages → Source).
 
 To generate a design with Claude in CI, add an `ANTHROPIC_API_KEY` repository

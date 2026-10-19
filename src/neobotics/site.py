@@ -3,15 +3,19 @@
 A downstream consumer like :mod:`neobotics.cadview`: it reads run directories
 (``description.md``, ``part.py``, ``cad/``) and never runs a script.  Parts are
 grouped as product -> subcategory -> part (:mod:`neobotics.catalog` reads that
-tree from ``products/``).  The page opens with each product and its
-subcategories; every part gets a section with its description, an interactive
-3D view of its STL (three.js, loaded from a CDN, with the shaded PNGs as the
-fallback), the measured summary, the CadQuery script and downloads of every
-CAD file.
+tree from ``products/``), and the site is one page per level that matters:
 
     site/
-      index.html
-      parts/<product>/<subcategory>/<part>/part.stl, part.step, part.brep, part.py, ...
+      index.html                                 overview: a card per product
+      products/<product>/index.html              the product: its subcategories and parts
+      products/<product>/<subcategory>/<part>/   part.stl, part.step, part.brep, part.py, views
+
+Every product page links back to the overview (breadcrumb, "All products",
+and a previous / up / next pager), and all links are relative, so the site
+works from any base URL — a GitHub Pages project path or a local folder.  On a
+product page every part gets its description, an interactive 3D view of its
+STL (three.js, loaded from a CDN, with the shaded PNGs as the fallback), the
+measured summary, the CadQuery script and downloads of every CAD file.
 """
 
 from __future__ import annotations
@@ -106,11 +110,17 @@ def _anchor(*slugs: str) -> str:
     return "--".join(slugs)
 
 
-def build_site(products: list[Product], site_dir: Path) -> Path:
-    """Write ``index.html`` and every part's files into ``site_dir``."""
-    site_dir = Path(site_dir)
-    if not any(p.n_parts for p in products):
-        raise ValueError("no parts to publish")
+def _plural_categories(n: int) -> str:
+    return f"{n} {'subcategory' if n == 1 else 'subcategories'}"
+
+
+#: Where a product's page lives, relative to the site root; its parts' files
+#: sit below it, at <subcategory>/<part>/.
+def product_dir(product: Product) -> str:
+    return f"products/{product.slug}"
+
+
+def _check_unique(products: list[Product]) -> None:
     for kind, slugs in (("product", [p.slug for p in products]),
                         *((f"subcategory of {p.slug}", [c.slug for c in p.categories])
                           for p in products),
@@ -118,15 +128,33 @@ def build_site(products: list[Product], site_dir: Path) -> Path:
                           for p in products for c in p.categories)):
         if len(set(slugs)) != len(slugs):
             raise ValueError(f"{kind} names must be unique, got {slugs}")
-    for product in products:
+
+
+def build_site(products: list[Product], site_dir: Path) -> Path:
+    """Write the overview, one page per product, and every part's files.
+
+        site/index.html                                  every product, as a card
+        site/products/<product>/index.html               the product's subcategories and parts
+        site/products/<product>/<subcategory>/<part>/    the part's STEP, STL, BREP, script, views
+    """
+    site_dir = Path(site_dir)
+    products = [p for p in products if p.n_parts]
+    if not products:
+        raise ValueError("no parts to publish")
+    _check_unique(products)
+    for i, product in enumerate(products):
+        page_dir = site_dir / product_dir(product)
         for category in product.categories:
             for part in category.parts:
-                target = site_dir / "parts" / product.slug / category.slug / part.name
+                target = page_dir / category.slug / part.name
                 target.mkdir(parents=True, exist_ok=True)
                 for filename in [f for f, *_ in DOWNLOADS] + IMAGES:
                     shutil.copyfile(part.cad_dir / filename, target / filename)
+        siblings = (products[i - 1] if i > 0 else None,
+                    products[i + 1] if i + 1 < len(products) else None)
+        (page_dir / "index.html").write_text(render_product(product, siblings))
     index = site_dir / "index.html"
-    index.write_text(render_index(products))
+    index.write_text(render_overview(products))
     (site_dir / ".nojekyll").write_text("")
     return index
 
@@ -167,8 +195,8 @@ def _summary_rows(summary: dict) -> str:
     return "".join(f"<tr><th scope=row>{_e(k)}</th><td>{_e(v)}</td></tr>" for k, v in rows)
 
 
-def _part_section(product: Product, category: Category, part: Part) -> str:
-    base = f"parts/{product.slug}/{category.slug}/{part.name}"
+def _part_section(category: Category, part: Part) -> str:
+    base = f"{category.slug}/{part.name}"  # relative to the product page
     downloads = "".join(
         f'<li><a href="{base}/{f}" download><span class=fmt>{_e(label)}</span>'
         f"<span class=note>{_e(note)}</span></a></li>"
@@ -179,9 +207,8 @@ def _part_section(product: Product, category: Category, part: Part) -> str:
         if part.description else ""
     )
     return f"""
-<section class=part id="{_e(_anchor(product.slug, category.slug, part.name))}">
+<section class=part id="{_e(_anchor(category.slug, part.name))}">
   <header class=part-head>
-    <p class=crumbs>{_e(product.title)} <span aria-hidden=true>›</span> {_e(category.title)}</p>
     <h3>{_e(part.title)}</h3>
     <code class=slug>{_e(part.name)}</code>
   </header>
@@ -212,11 +239,11 @@ def _part_section(product: Product, category: Category, part: Part) -> str:
 </section>"""
 
 
-def _category_section(product: Product, category: Category) -> str:
-    parts = "".join(_part_section(product, category, p) for p in category.parts)
+def _category_section(category: Category) -> str:
+    parts = "".join(_part_section(category, p) for p in category.parts)
     blurb = _paragraphs(category.blurb) if category.blurb else ""
     return f"""
-<section class=category id="{_e(_anchor(product.slug, category.slug))}">
+<section class=category id="{_e(category.slug)}">
   <header class=category-head>
     <h2>{_e(category.title)}</h2>
     <span class=count>{_plural(len(category.parts), 'part')}</span>
@@ -225,58 +252,119 @@ def _category_section(product: Product, category: Category) -> str:
 </section>"""
 
 
-def _product_section(product: Product) -> str:
-    cards = "".join(
-        f'<li><a href="#{_e(_anchor(product.slug, c.slug))}"><span class=card-title>'
-        f"{_e(c.title)}</span><span class=count>{_plural(len(c.parts), 'part')}</span></a></li>"
+def _product_tree(product: Product) -> str:
+    cats = "".join(
+        f'<li><a href="#{_e(c.slug)}">{_e(c.title)}</a><ul>'
+        + "".join(f'<li><a href="#{_e(_anchor(c.slug, x.name))}">{_e(x.title)}</a></li>'
+                  for x in c.parts)
+        + "</ul></li>"
         for c in product.categories
     )
-    categories = "".join(_category_section(product, c) for c in product.categories)
-    blurb = _paragraphs(product.blurb) if product.blurb else ""
-    return f"""
-<section class=product id="{_e(product.slug)}">
-  <header class=product-head>
-    <p class=eyebrow>Product</p>
-    <h2 class=product-title>{_e(product.title)}</h2>
-    <p class=count>{_plural(len(product.categories), 'subcategory').replace('subcategorys', 'subcategories')} ·
-       {_plural(product.n_parts, 'part')}</p>
-    {blurb}
-    <ul class=cards>{cards}</ul>
-  </header>{categories}
-</section>"""
+    return (f'<nav class=tree aria-label="{_e(product.title)} contents">'
+            f'<a class=back href="../../index.html">← All products</a>'
+            f'<p class=eyebrow>{_e(product.title)}</p><ul>{cats}</ul></nav>')
 
 
-def _nav(products: list[Product]) -> str:
-    items = []
-    for p in products:
-        cats = "".join(
-            f'<li><a href="#{_e(_anchor(p.slug, c.slug))}">{_e(c.title)}</a><ul>'
-            + "".join(f'<li><a href="#{_e(_anchor(p.slug, c.slug, x.name))}">{_e(x.title)}</a></li>'
-                      for x in c.parts)
-            + "</ul></li>"
-            for c in p.categories
-        )
-        items.append(f'<li><a class=nav-product href="#{_e(p.slug)}">{_e(p.title)}</a><ul>{cats}</ul></li>')
-    return f'<nav class=tree aria-label=Products><p class=eyebrow>Products</p><ul>{"".join(items)}</ul></nav>'
+_ICON = ("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E"
+         "%3Cpath d='M2 14V2h4v8h8v4z' fill='%232f6fb1'/%3E%3C/svg%3E")
 
 
-def render_index(products: list[Product]) -> str:
-    sections = "".join(_product_section(p) for p in products)
+def _page(title: str, description: str, body: str, *, viewer: bool) -> str:
+    """A whole page: shared head, ``body``, footer; ``viewer`` loads three.js and the viewer script."""
+    head_extra = ""
+    script = ""
+    if viewer:
+        head_extra = (f'<script type=importmap>\n{{"imports": {{"three": "{_THREE}/build/three.module.js", '
+                      f'"three/addons/": "{_THREE}/examples/jsm/"}}}}\n</script>')
+        script = f"<script type=module>{_JS}</script>"
     return f"""<!doctype html>
 <html lang=en>
 <head>
 <meta charset=utf-8>
 <meta name=viewport content="width=device-width, initial-scale=1">
-<title>neoBotics products</title>
-<meta name=description content="Products and their parts, built from natural-language descriptions as CadQuery B-rep code.">
-<link rel=icon href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2 14V2h4v8h8v4z' fill='%232f6fb1'/%3E%3C/svg%3E">
+<title>{_e(title)}</title>
+<meta name=description content="{_e(description)}">
+<link rel=icon href="{_ICON}">
 <style>{_CSS}</style>
-<script type=importmap>
-{{"imports": {{"three": "{_THREE}/build/three.module.js", "three/addons/": "{_THREE}/examples/jsm/"}}}}
-</script>
+{head_extra}
 </head>
 <body>
-<header class=site-head>
+{body}
+<footer class=wrap><p class=muted>Built by <code>neobotics site</code> from
+<a href="https://github.com/anroleroux/neoBotics">anroleroux/neoBotics</a>. Units are millimetres; z is up.</p></footer>
+{script}
+</body>
+</html>
+"""
+
+
+def render_product(product: Product, siblings: tuple[Product | None, Product | None] = (None, None)) -> str:
+    """One product's page: breadcrumb back to the overview, its subcategories and parts."""
+    cards = "".join(
+        f'<li><a href="#{_e(c.slug)}"><span class=card-title>{_e(c.title)}</span>'
+        f"<span class=count>{_plural(len(c.parts), 'part')}</span></a></li>"
+        for c in product.categories
+    )
+    categories = "".join(_category_section(c) for c in product.categories)
+    blurb = _paragraphs(product.blurb) if product.blurb else ""
+    prev, nxt = siblings
+    pager = "".join([
+        f'<a class=prev href="../{_e(prev.slug)}/index.html"><small>Previous product</small>'
+        f"<span>← {_e(prev.title)}</span></a>" if prev else "<span></span>",
+        '<a class=up href="../../index.html"><small>Back to</small><span>All products</span></a>',
+        f'<a class=next href="../{_e(nxt.slug)}/index.html"><small>Next product</small>'
+        f"<span>{_e(nxt.title)} →</span></a>" if nxt else "<span></span>",
+    ])
+    body = f"""<header class="site-head compact">
+  <div class=wrap>
+    <nav class=crumbs-bar aria-label=Breadcrumb>
+      <ol><li><a href="../../index.html">neoBotics products</a></li>
+      <li aria-current=page>{_e(product.title)}</li></ol>
+    </nav>
+    <p class=eyebrow>Product</p>
+    <h1 class=product-title>{_e(product.title)}</h1>
+    <p class=count>{_plural_categories(len(product.categories))} · {_plural(product.n_parts, 'part')}</p>
+    {blurb}
+    <ul class=cards>{cards}</ul>
+  </div>
+</header>
+<div class="wrap layout">
+  {_product_tree(product)}
+  <main>{categories}
+    <nav class=pager aria-label="Other products">{pager}</nav>
+  </main>
+</div>"""
+    return _page(f"{product.title} · neoBotics", f"{product.title}: its parts, built as CadQuery B-rep code.",
+                 body, viewer=True)
+
+
+def _product_card(product: Product) -> str:
+    href = f"{product_dir(product)}/index.html"
+    first = product.categories[0]
+    thumb = f"{product_dir(product)}/{first.slug}/{first.parts[0].name}/part.png"
+    cats = "".join(f"<li>{_e(c.title)} <span class=count>{len(c.parts)}</span></li>"
+                   for c in product.categories)
+    blurb = _paragraphs(product.blurb) if product.blurb else ""
+    return f"""
+<li class=product-card>
+  <a href="{_e(href)}">
+    <span class=thumb><img src="{_e(thumb)}" alt="" loading=lazy></span>
+    <span class=card-body>
+      <span class=product-name>{_e(product.title)}</span>
+      <span class=count>{_plural_categories(len(product.categories))} · {_plural(product.n_parts, 'part')}</span>
+      <span class=card-blurb>{blurb}</span>
+      <ul class=card-cats>{cats}</ul>
+      <span class=open>Open {_e(product.title)} →</span>
+    </span>
+  </a>
+</li>"""
+
+
+def render_overview(products: list[Product]) -> str:
+    """The landing page: what the pipeline does, then a card per product."""
+    cards = "".join(_product_card(p) for p in products)
+    n_parts = sum(p.n_parts for p in products)
+    body = f"""<header class=site-head>
   <div class=wrap>
     <h1>neoBotics</h1>
     <p class=lede>Parts described in plain language, written as CadQuery B-rep code, built and checked as exact solids.</p>
@@ -288,17 +376,15 @@ def render_index(products: list[Product]) -> str:
     </ol>
   </div>
 </header>
-<div class="wrap layout">
-  {_nav(products)}
-  <main>{sections}
-  </main>
-</div>
-<footer class=wrap><p class=muted>Built by <code>neobotics site</code> from
-<a href="https://github.com/anroleroux/neoBotics">anroleroux/neoBotics</a>. Units are millimetres; z is up.</p></footer>
-<script type=module>{_JS}</script>
-</body>
-</html>
-"""
+<main class=wrap>
+  <div class=overview-head>
+    <h2>Products</h2>
+    <span class=count>{_plural(len(products), 'product')} · {_plural(n_parts, 'part')}</span>
+  </div>
+  <ul class=product-grid>{cards}</ul>
+</main>"""
+    return _page("neoBotics products", "Products and their parts, built from natural-language "
+                 "descriptions as CadQuery B-rep code.", body, viewer=False)
 
 
 _CSS = """
@@ -380,7 +466,37 @@ background:var(--panel);text-decoration:none;color:var(--ink)}
 .category-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;border-bottom:2px solid var(--line);padding-bottom:8px}
 .category-head h2{margin:0;font-size:1.3rem}
 .category-head p{flex-basis:100%;margin:2px 0 0;color:var(--muted)}
-.crumbs{flex-basis:100%;margin:0;font-size:.82rem;color:var(--muted)}
+.site-head.compact{padding:18px 0 22px}
+.site-head .product-title{font-size:2.1rem}
+.site-head .count{margin:2px 0 10px}
+.site-head p{max-width:65ch}
+.crumbs-bar ol{list-style:none;display:flex;flex-wrap:wrap;gap:4px;padding:0;margin:0 0 14px;font-size:.9rem}
+.crumbs-bar li+li::before{content:"›";margin-right:4px;color:var(--muted)}
+.crumbs-bar [aria-current]{color:var(--muted)}
+.back{display:inline-block;margin-bottom:14px;font-weight:500;text-decoration:none}
+.back:hover{text-decoration:underline}
+.pager{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;margin:36px 0 8px;border-top:1px solid var(--line);padding-top:18px}
+.pager a{display:flex;flex-direction:column;gap:2px;padding:10px 14px;border:1px solid var(--line);border-radius:10px;
+background:var(--panel);text-decoration:none;color:var(--ink)}
+.pager a:hover{border-color:var(--accent)}
+.pager small{color:var(--muted);font-size:.78rem}
+.pager .up{text-align:center}.pager .next{text-align:right}
+@media (max-width:600px){.pager{grid-template-columns:1fr}.pager .next,.pager .up{text-align:left}}
+.overview-head{display:flex;align-items:baseline;gap:12px;margin:28px 0 14px}
+.overview-head h2{margin:0;font-size:1.4rem}
+.product-grid{list-style:none;padding:0;margin:0 0 24px;display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px}
+.product-card a{display:flex;flex-direction:column;height:100%;border:1px solid var(--line);border-radius:12px;
+overflow:hidden;background:var(--panel);text-decoration:none;color:var(--ink)}
+.product-card a:hover{border-color:var(--accent)}
+.product-card a:hover .open{text-decoration:underline}
+.thumb{display:block;position:relative;background:var(--viewer);aspect-ratio:16/10;overflow:hidden}
+.thumb img{position:absolute;inset:6%;width:88%;height:88%;object-fit:contain}
+.card-body{display:flex;flex-direction:column;gap:4px;padding:14px 16px 16px;flex:1}
+.product-name{font-size:1.35rem;font-weight:700}
+.card-blurb p{margin:4px 0;color:var(--muted);font-size:.93rem}
+.card-cats{list-style:none;padding:0;margin:6px 0 0;display:flex;flex-wrap:wrap;gap:6px}
+.card-cats li{font-size:.85rem;padding:3px 9px;border:1px solid var(--line);border-radius:999px}
+.open{margin-top:auto;padding-top:10px;color:var(--accent);font-weight:600}
 .part-head h3{margin:0;font-size:1.2rem}
 .facts h4,.description h4{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 6px}
 section[id]{scroll-margin-top:12px}

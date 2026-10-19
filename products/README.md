@@ -1,6 +1,8 @@
 # Products
 
-The catalogue the GitHub Pages site is built from, as product → subcategory → part:
+The catalogue the GitHub Pages site is built from, as product → subcategory → part.
+The site has an overview page with a card per product, and one page per
+product listing its subcategories and parts.
 
 ```
 products/<product>/product.md                          "# Title", then a blurb
@@ -27,6 +29,6 @@ cp results/jaw/part.py products/B4/grippers/jaw/part.py
 In CI, generation is Actions → **cad** → *Run workflow*, with `design` set to
 `B4/grippers/jaw`. It needs the `ANTHROPIC_API_KEY` repository secret.
 
-`neobotics site` builds every part and renders the page. CI runs it on every
+`neobotics site` builds every part and renders the pages. CI runs it on every
 push and publishes the result. A part whose script fails to build fails the
 job.

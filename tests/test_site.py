@@ -63,36 +63,58 @@ def test_cad_run_keeps_the_description_next_to_the_script(tmp_path):
     assert (tmp_path / "run" / "description.md").read_text() == (BRACKET / "description.md").read_text()
 
 
-def test_page_groups_parts_by_product_and_subcategory(catalogue):
+def _product_page(catalogue, slug):
+    return (catalogue["out"] / "site" / "products" / slug / "index.html").read_text()
+
+
+def test_overview_has_a_card_per_product(catalogue):
     page = catalogue["page"]
     assert not catalogue["failures"]
-    # products in order, each with its subcategories and parts
-    assert page.index('id="B4"') < page.index('id="B4--motor_mounts"') \
-        < page.index('id="B4--motor_mounts--nema17_bracket"') < page.index('id="Z9"') \
-        < page.index('id="Z9--plates"') < page.index('id="Z9--plates--square_plate"')
-    assert "Motor mounts" in page  # the title from category.md
-    assert "Plates" in page  # no category.md: the slug, capitalised
-    assert "An L-bracket that holds a NEMA 17 stepper motor" in page
-    assert "NEMA 17 31 mm square pattern" in page  # the description
-    assert "50 × 40 × 50 mm" in page  # the measured size
-    assert 'href="#B4--motor_mounts"' in page  # the subcategory card and the tree
+    assert page.index('href="products/B4/index.html"') < page.index('href="products/Z9/index.html"')
+    assert "Motor mounts" in page and "Plates" in page  # subcategories listed on the cards
+    assert 'src="products/B4/motor_mounts/nema17_bracket/part.png"' in page  # thumbnail
+    assert "2 products · 2 parts" in page
+    assert "three.module.js" not in page  # no viewer on the overview
+
+
+def test_each_product_has_its_own_page(catalogue):
+    b4 = _product_page(catalogue, "B4")
+    assert "<title>B4 · neoBotics</title>" in b4
+    assert b4.index('id="motor_mounts"') < b4.index('id="motor_mounts--nema17_bracket"')
+    assert "Motor mounts" in b4  # the title from category.md
+    assert "An L-bracket that holds a NEMA 17 stepper motor" in b4
+    assert "NEMA 17 31 mm square pattern" in b4  # the description
+    assert "50 × 40 × 50 mm" in b4  # the measured size
+    assert "square_plate" not in b4  # another product's part stays on its own page
+    z9 = _product_page(catalogue, "Z9")
+    assert 'id="plates--square_plate"' in z9
+    assert "Plates" in z9  # no category.md: the slug, capitalised
+
+
+def test_product_pages_link_back(catalogue):
+    b4, z9 = _product_page(catalogue, "B4"), _product_page(catalogue, "Z9")
+    for page in (b4, z9):
+        assert page.count('href="../../index.html"') >= 3  # breadcrumb, sidebar, pager
+        assert "All products" in page
+    assert 'href="../Z9/index.html"' in b4 and "../B4/index.html" not in b4
+    assert 'href="../B4/index.html"' in z9 and "../Z9/index.html" not in z9
 
 
 def test_every_part_publishes_its_files(catalogue):
-    page = catalogue["page"]
     site = catalogue["out"] / "site"
-    for path in ("B4/motor_mounts/nema17_bracket", "Z9/plates/square_plate"):
-        assert f'data-stl="parts/{path}/part.stl"' in page
+    for product, rest in (("B4", "motor_mounts/nema17_bracket"), ("Z9", "plates/square_plate")):
+        page = _product_page(catalogue, product)
+        assert f'data-stl="{rest}/part.stl"' in page
         for filename, *_ in DOWNLOADS:
-            assert (site / "parts" / path / filename).exists()
-            assert f'href="parts/{path}/{filename}"' in page
+            assert (site / "products" / product / rest / filename).exists()
+            assert f'href="{rest}/{filename}"' in page
     assert (site / ".nojekyll").exists()
 
 
-def test_page_escapes_titles_and_blurbs(catalogue):
-    page = catalogue["page"]
-    assert "Z9 <beta>" not in page and "Z9 &lt;beta&gt;" in page
-    assert "A second product &amp; line." in page
+def test_pages_escape_titles_and_blurbs(catalogue):
+    for page in (catalogue["page"], _product_page(catalogue, "Z9")):
+        assert "Z9 <beta>" not in page and "Z9 &lt;beta&gt;" in page
+        assert "A second product &amp; line." in page
 
 
 def test_a_part_that_does_not_build_is_reported_and_left_off(tmp_path):
@@ -106,8 +128,8 @@ def test_a_part_that_does_not_build_is_reported_and_left_off(tmp_path):
     index, failures = build_catalog(root, tmp_path / "results", tmp_path / "site",
                                     log=lambda _: None)
     assert len(failures) == 1 and failures[0].startswith("A1/plates/bad:")
-    page = index.read_text()
-    assert 'id="A1--plates--good"' in page and "A1--plates--bad" not in page
+    page = (tmp_path / "site" / "products" / "A1" / "index.html").read_text()
+    assert 'id="plates--good"' in page and "plates--bad" not in page
 
 
 def test_site_refuses_empty_catalogues_and_duplicate_slugs(tmp_path):
