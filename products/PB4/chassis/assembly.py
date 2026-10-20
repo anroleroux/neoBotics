@@ -6,9 +6,10 @@ front line. The two cells at -y (battery_1 and battery_2) are turned round:
 their positive terminals point to the back and their negative ends to the
 front. The other two point their positive terminals to the front (+x) and
 have their negative ends against the back wall. All four are a faded pink.
-An IP6505 USB fast-charge board sits on the floor in front of the cells, its
-USB port against the front wall, behind the wall's plug hole, and a CN3302
-2S charger board sits beside it, its USB-C port behind the wall's USB-C hole.
+Two IP6505 USB fast-charge boards sit side by side on the floor in front of
+the cells, their USB ports against the front wall, each behind one of the
+wall's USB-A holes, and a CN3302 2S charger board sits beside them at +y,
+its USB-C port behind the wall's USB-C hole.
 
 The cells are wired as two parallel pairs in series (2S2P, 8.4 V full), in a
 U: all four are linked at the back wall, which joins battery_1 and battery_2's
@@ -55,14 +56,15 @@ for i, y in enumerate(base.slot_y):
         color=cell_color,
     )
 
-# the two USB boards where the base's plug holes expect them
+# the USB boards where the base's plug holes expect them
 board_green = cq.Color(0.15, 0.45, 0.30)
-result.add(
-    ip6505.result,
-    name="ip6505_charger",
-    loc=cq.Location((base.ip6505_x, base.ip6505_y, base.ip6505_z)),
-    color=board_green,
-)
+for i, y in enumerate(base.ip6505_ys):
+    result.add(
+        ip6505.result,
+        name=f"ip6505_charger_{i + 1}",
+        loc=cq.Location((base.ip6505_x, y, base.ip6505_z)),
+        color=board_green,
+    )
 result.add(
     cn3302.result,
     name="cn3302_charger",

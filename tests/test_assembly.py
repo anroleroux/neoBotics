@@ -122,16 +122,16 @@ def test_the_pb4_chassis_carries_four_cells_against_the_back_wall(tmp_path):
 
 
 def test_the_pb4_chargers_sit_behind_their_plug_holes(tmp_path):
-    """The IP6505 and CN3302 boards stand on the floor with their USB mouths
-    against the inside of the front wall, each behind its own plug hole."""
+    """The two IP6505 boards and the CN3302 board stand on the floor with their
+    USB mouths against the inside of the front wall, each behind its own plug hole."""
     summary = _summary(build_part(CHASSIS / "assembly.py", tmp_path / "out"))
     base = _summary(build_part(CHASSIS / "base" / "part.py", tmp_path / "base"))
     l, wall = base["bounding_box"]["size"][0], 3.0
-    for name in ("ip6505_charger", "cn3302_charger"):
+    for name in ("ip6505_charger_1", "ip6505_charger_2", "cn3302_charger"):
         (board,) = [c for c in summary["components"] if c["name"].endswith(name)]
         assert board["bounding_box_max"][0] == pytest.approx(l / 2 - wall)
         assert board["bounding_box_min"][2] == pytest.approx(wall)
-    assert base["regions"]["plug_hole"]["count"] == 4
+    assert base["regions"]["plug_holes"]["count"] == 8
     assert base["regions"]["usbc_hole"]["count"] == 4
     assert summary["interference"] == []
 

@@ -9,9 +9,10 @@ high as the ribs, stands across the breadth just in front of the cells. The
 side retainers run from the back wall to the mini wall, the centre separator
 from 1 mm in front of the back wall to the mini wall, and the other two
 separators from 1 mm in front of the back wall to the cells' front faces.
-The front wall has a hole for a USB-A plug, in line with the port of the
-IP6505 fast-charge board that sits on the floor behind it, and a hole for a
-USB-C plug, in line with the port of the CN3302 battery charger beside it.
+The front wall has two holes for USB-A plugs, in line with the ports of the
+two IP6505 fast-charge boards that sit side by side on the floor behind it,
+and a hole for a USB-C plug, in line with the port of the CN3302 battery
+charger beside them.
 
 Assumptions where the description is silent:
 - l, b and h are the outside dimensions; the space between the end walls is
@@ -32,14 +33,15 @@ Assumptions where the description is silent:
   and the five ribs are evenly spaced, so the four cell slots share what is
   left of the breadth equally (18.75 mm each, 0.35 mm wider than a cell);
 - the cells' diameter and length come from battery_18650 through load_part;
-- the IP6505 charger board sits on the floor, centred across the breadth,
-  its USB port's mouth against the inside of the front wall (+x); the plug
-  hole is the USB-A plug's 12 x 4.5 mm metal shell with 0.5 mm clearance all
-  round (13 x 5.5 mm), square-cornered, centred on the port, so the plug's
-  moulded body stays outside; the board's size and port height come from
+- the first IP6505 board sits on the floor, centred across the breadth, its
+  USB port's mouth against the inside of the front wall (+x); the second sits
+  beside it on the -y side, 3 mm away, the same way round; each plug hole is
+  the USB-A plug's 12 x 4.5 mm metal shell with 0.5 mm clearance all round
+  (13 x 5.5 mm), square-cornered, centred on its port, so the plug's moulded
+  body stays outside; the board's size and port height come from
   ip6505_charger through load_part;
-- the CN3302 charger board sits on the floor beside it, on the +y side with a
-  3 mm gap between the boards, its USB-C port's mouth against the inside of
+- the CN3302 charger board sits on the floor beside the first IP6505, on the
+  +y side with a 3 mm gap between the boards, its USB-C port's mouth against the inside of
   the front wall too; its plug hole is the USB-C plug's 8.25 x 2.4 mm shell
   with 0.5 mm clearance all round (9.25 x 3.4 mm), with fully rounded ends
   like the plug, centred on the port; the board's size and port height come
@@ -88,20 +90,21 @@ front_inside = l / 2 - wall  # the front wall's inner face
 plug_w = 12.0  # USB-A plug shell width
 plug_h = 4.5  # USB-A plug shell height
 ip6505_x = front_inside - ip6505.length / 2  # board centre: its port against the front wall
-ip6505_y = 0.0  # centred across the breadth
+ip6505_ys = [0.0, -(ip6505.width + board_gap)]  # the first centred, the second beside it at -y
 ip6505_z = wall  # on the floor
 plug_z = ip6505_z + ip6505.usb_axis_z  # the USB-A hole's centre height
 
 usbc_w = 8.25  # USB-C plug shell width
 usbc_h = 2.4  # USB-C plug shell height
 cn3302_x = front_inside - cn3302.length / 2
-cn3302_y = ip6505_y + ip6505.width / 2 + board_gap + cn3302.width / 2  # beside it, at +y
+cn3302_y = ip6505_ys[0] + ip6505.width / 2 + board_gap + cn3302.width / 2  # beside the first, at +y
 cn3302_z = wall
 usbc_z = cn3302_z + cn3302.usb_axis_z  # the USB-C hole's centre height
 
 for board, x in ((ip6505, ip6505_x), (cn3302, cn3302_x)):
     assert x - board.length / 2 > front_x0 + front_t, "a USB board does not fit in front of the mini wall"
 assert cn3302_y + cn3302.width / 2 < b / 2 - rib_t, "the CN3302 board does not fit inside the side retainer"
+assert min(ip6505_ys) - ip6505.width / 2 > -b / 2 + rib_t, "an IP6505 board does not fit inside the side retainer"
 
 # the space between the end walls, above the floor, through both long sides
 channel = (
@@ -125,8 +128,9 @@ front_wall = (
 )
 result = result.union(front_wall)
 
-plug_hole = (
-    cq.Workplane("YZ", origin=(front_inside, ip6505_y, plug_z))
+plug_holes = (
+    cq.Workplane("YZ", origin=(front_inside, 0, plug_z))
+    .pushPoints([(y, 0) for y in ip6505_ys])
     .rect(plug_w + 2 * plug_clearance, plug_h + 2 * plug_clearance)
     .extrude(wall)
 )
@@ -135,14 +139,15 @@ usbc_hole = (
     .slot2D(usbc_w + 2 * plug_clearance, usbc_h + 2 * plug_clearance)
     .extrude(wall)
 )
-result = result.cut(plug_hole).cut(usbc_hole)
+result = result.cut(plug_holes).cut(usbc_hole)
 
 regions = {
     "rim": result.faces(">Z"),  # the tops of the two end walls, where the lid sits
     "sides": result.faces(">Y or <Y"),  # the open long sides' edges, where the lid's skirts meet
     "bottom": result.faces("<Z"),
-    "plug_hole": result.faces("+Y or -Y or +Z or -Z").filter(  # the USB-A hole's four sides
-        lambda f: f.Center().x > front_inside + 1e-6 and abs(f.Center().y - ip6505_y) < plug_w
+    "plug_holes": result.faces("+Y or -Y or +Z or -Z").filter(  # the two USB-A holes' sides
+        lambda f: f.Center().x > front_inside + 1e-6
+        and min(abs(f.Center().y - y) for y in ip6505_ys) < plug_w
         and abs(f.Center().z - plug_z) < plug_h),
     "usbc_hole": result.faces().filter(  # the USB-C hole's sides: two flats, two rounded ends
         lambda f: f.Center().x > front_inside + 1e-6 and f.Center().x < l / 2 - 1e-6
