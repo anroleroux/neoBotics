@@ -100,8 +100,9 @@ def test_catalog_finds_assembly_models(tmp_path):
 
 
 def test_the_pb4_chassis_carries_four_cells_against_the_back_wall(tmp_path):
-    """The real chassis: four 18650 cells on the floor, pointing along x, each
-    with its negative end against the back (-x) wall, none overlapping."""
+    """The real chassis: four 18650 cells on the floor, along x, each against the
+    back (-x) wall, none overlapping; the two at -y are turned round, so they
+    touch that wall with their positive buttons, not their negative ends."""
     summary = _summary(build_part(CHASSIS / "assembly.py", tmp_path / "out"))
     base = _summary(build_part(CHASSIS / "base" / "part.py", tmp_path / "base"))
     assert summary["interference"] == []
@@ -112,8 +113,26 @@ def test_the_pb4_chassis_carries_four_cells_against_the_back_wall(tmp_path):
         assert cell["bounding_box_min"][0] == pytest.approx(-l / 2 + wall)  # against the back wall
         assert cell["bounding_box_max"][0] - cell["bounding_box_min"][0] == pytest.approx(65.0)
         assert cell["bounding_box_min"][2] == pytest.approx(wall)  # on the floor
-    # each cell touches the base over exactly its negative end
-    assert [c["area_mm2"] for c in summary["contacts"]] == pytest.approx([math.pi * 9.2 ** 2] * 4)
+    # battery_1 and battery_2 touch the base over their 7 mm buttons, the others
+    # over their negative ends; all are the same faded pink
+    assert [c["area_mm2"] for c in summary["contacts"]] == pytest.approx(
+        [math.pi * 3.5 ** 2] * 2 + [math.pi * 9.2 ** 2] * 2)
+    assert {c["color"] for c in cells} == {"#edbac9"}
+
+
+def test_components_keep_the_colour_they_were_added_with(tmp_path):
+    """A component added with a colour keeps it, in the summary, the PNG views
+    and the site's viewer; one without falls back to the palette."""
+    root = _tree(tmp_path / "products")
+    script = root / "P1" / "stack" / "assembly.py"
+    script.write_text(script.read_text().replace(
+        'name="slab",', 'name="slab", color=cq.Color(1, 0, 0),'))
+    summary = _summary(build_part(script, tmp_path / "out"))
+    assert [c["color"] for c in summary["components"]] == ["#5c8fc7", "#ff0000"]
+    _, failures = build_catalog(root, tmp_path / "results", tmp_path / "site", log=lambda _: None)
+    assert not failures
+    page = (tmp_path / "site/products/P1/stack/index.html").read_text()
+    assert 'data-names="stack/box stack/slab" data-colors="#5c8fc7 #ff0000"' in page
 
 
 def test_the_pb4_lid_fits_the_base(tmp_path):

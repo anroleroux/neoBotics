@@ -108,9 +108,10 @@ products/<PRODUCT>/<assembly>/assembly.py                 optional: the assemble
    - **Place them:** `result = cq.Assembly(name=...)`, with `.add(part.result,
      name=..., loc=cq.Location((x, y, z)))` for each part. Derive every offset
      from the parts' own variables (`base.h - lid.lip_depth`), never from
-     copied numbers. Give each part a `color`. Set `regions = {}`.
+     copied numbers. Give each part a `color`: the PNGs and the 3D viewer
+     use it (a component without one gets a palette colour). Set `regions = {}`.
    - **Build:** `neobotics build <PRODUCT>/<assembly>`. The summary lists:
-     - **components**, by name, with volume and bounding box;
+     - **components**, by name, with volume, bounding box and colour;
      - **interference**: pairs that share volume. It must be empty unless an
        overlap is intended;
      - **contacts**: pairs touching over an area, in mm². A seated lid shows

@@ -275,8 +275,12 @@ def _detail(part: Part, base: str, *, model: bool = False) -> str:
         f"<span class=note>{_e(note)}</span></a></li>"
         for f, label, note in [*DOWNLOADS, (part.script_name, part.script_name, SCRIPT_NOTE)]
     )
-    stls = [c["stl"] for c in part.summary.get("components", []) if c.get("stl")] if model else []
-    stl = " ".join(f"{prefix}{f}" for f in stls) or f"{prefix}part.stl"
+    parts = [c for c in part.summary.get("components", []) if c.get("stl")] if model else []
+    stl = " ".join(f"{prefix}{c['stl']}" for c in parts) or f"{prefix}part.stl"
+    # an assembled model's components, for the viewer's colours and its show/see-through controls
+    names = f' data-names="{_e(" ".join(c["name"] for c in parts))}"' if parts else ""
+    colors = (f' data-colors="{_e(" ".join(c["color"] for c in parts))}"'
+              if parts and all(c.get("color") for c in parts) else "")
     description = (
         f"<div class=description><h4>Description</h4>{_paragraphs(part.description)}</div>"
         if part.description else ""
@@ -285,7 +289,7 @@ def _detail(part: Part, base: str, *, model: bool = False) -> str:
     return f"""
 <section class="part{' model' if model else ''}">
   <div class=part-grid>
-    <figure class=viewer data-stl="{_e(stl)}">
+    <figure class=viewer data-stl="{_e(stl)}"{names}{colors}>
       <img src="{prefix}part.png" alt="Shaded view of {_e(part.title)}" class=fallback>
       <figcaption>Drag to orbit · scroll to zoom · <button type=button class=reset>reset view</button></figcaption>
     </figure>
@@ -550,6 +554,16 @@ aspect-ratio:4/3;display:flex;flex-direction:column}
 .viewer.live .fallback{display:none}
 .viewer figcaption{font-size:.8rem;color:var(--muted);padding:6px 10px;border-top:1px solid var(--line)}
 .viewer button{font:inherit;color:var(--accent);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline}
+.viewer .layers{display:flex;flex-wrap:wrap;gap:4px 6px;padding:6px 10px;border-top:1px solid var(--line);
+font-size:.8rem;max-height:30%;overflow:auto}
+.viewer .layer{display:inline-flex;align-items:center;gap:5px;padding:2px 4px 2px 6px;border:1px solid var(--line);
+border-radius:6px}
+.viewer .layer label{display:inline-flex;align-items:center;gap:5px;cursor:pointer}
+.viewer .layer input{margin:0}
+.viewer .swatch{width:10px;height:10px;border-radius:2px;flex:none}
+.viewer .layer.hidden label{color:var(--muted);text-decoration:line-through}
+.viewer .layer .ghost{text-decoration:none;padding:0 3px;border-radius:4px;color:var(--muted)}
+.viewer .layer .ghost[aria-pressed=true]{color:var(--accent);background:var(--code-bg)}
 .facts h3,.description h3{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 6px}
 .description{margin-bottom:16px}.description p{margin:0 0 .6em}
 table{border-collapse:collapse;width:100%;margin-bottom:16px;font-size:.92rem}
@@ -677,9 +691,59 @@ import {OrbitControls} from "three/addons/controls/OrbitControls.js";
 
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
-// an assembly's components, in order, match the PNG views (cadview.COMPONENT_RGB);
+// an assembly's components take the colours its PNG views use (data-colors, from
+// the build summary), falling back to this palette (cadview.COMPONENT_RGB);
 // a single part uses the page's --part colour
 const COMPONENT_COLORS = [0x5b8fc7, 0xe08f3d, 0x66ad73, 0x9e7ac7, 0xcc6673, 0x73b3b8];
+const SEE_THROUGH = 0.22;  // a see-through component's opacity
+const HALF_DISC = '<svg width=12 height=12 viewBox="0 0 12 12" aria-hidden=true style="vertical-align:-1px">' +
+  '<circle cx=6 cy=6 r=5 fill=none stroke=currentColor stroke-width=1.4 />' +
+  '<path d="M6 1a5 5 0 0 1 0 10z" fill=currentColor /></svg>';
+
+// one chip per component under the view: a checkbox shows or hides it, the
+// half-disc button makes it see-through; a single part gets the button alone
+function layers(figure, parts, colors, names) {
+  const bar = document.createElement("div");
+  bar.className = "layers";
+  parts.forEach(({mesh, edges, material}, i) => {
+    const chip = document.createElement("span");
+    chip.className = "layer";
+    if (names) {
+      const label = document.createElement("label");
+      label.title = names[i];
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = true;
+      box.addEventListener("change", () => {
+        mesh.visible = edges.visible = box.checked;
+        chip.classList.toggle("hidden", !box.checked);
+      });
+      const swatch = document.createElement("span");
+      swatch.className = "swatch";
+      swatch.style.background = "#" + material.color.getHexString();
+      label.append(box, swatch, names[i].split("/").pop());
+      chip.append(label);
+    }
+    const ghost = document.createElement("button");
+    ghost.type = "button";
+    ghost.className = "ghost";
+    ghost.innerHTML = HALF_DISC + (names ? "" : " see-through");
+    ghost.title = "see-through";
+    ghost.setAttribute("aria-pressed", "false");
+    ghost.addEventListener("click", () => {
+      const on = ghost.getAttribute("aria-pressed") !== "true";
+      ghost.setAttribute("aria-pressed", String(on));
+      material.transparent = on;
+      material.opacity = on ? SEE_THROUGH : 1;
+      material.depthWrite = !on;  // so parts behind it still draw
+      material.needsUpdate = true;
+      edges.material.opacity = on ? 0.25 : 0.55;
+    });
+    chip.append(ghost);
+    bar.append(chip);
+  });
+  figure.insertBefore(bar, figure.querySelector("figcaption"));
+}
 
 function mount(figure) {
   const loader = new STLLoader();
@@ -691,16 +755,21 @@ function mount(figure) {
     const radius = box.getSize(new THREE.Vector3()).length() / 2;
 
     const scene = new THREE.Scene();
-    const materials = geometries.map((geometry, i) => {
+    const colors = figure.dataset.colors ? figure.dataset.colors.split(" ") : null;
+    const names = figure.dataset.names ? figure.dataset.names.split(" ") : null;
+    const parts = geometries.map((geometry, i) => {
       geometry.translate(-centre.x, -centre.y, -centre.z);
       geometry.computeVertexNormals();
-      const color = geometries.length > 1 ? COMPONENT_COLORS[i % COMPONENT_COLORS.length] : css("--part");
+      const color = geometries.length === 1 ? css("--part")
+        : colors ? colors[i] : COMPONENT_COLORS[i % COMPONENT_COLORS.length];
       const material = new THREE.MeshStandardMaterial({color, metalness: 0.15, roughness: 0.55});
       const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry, 30),
         new THREE.LineBasicMaterial({color: 0x1a2330, transparent: true, opacity: 0.55}));
-      scene.add(new THREE.Mesh(geometry, material), edges);
-      return material;
+      const mesh = new THREE.Mesh(geometry, material);
+      scene.add(mesh, edges);
+      return {mesh, edges, material};
     });
+    const materials = parts.map((p) => p.material);
     scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.4));
     const sun = new THREE.DirectionalLight(0xffffff, 1.6);
     sun.position.set(1, -1.4, 2);
@@ -714,6 +783,7 @@ function mount(figure) {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     figure.insertBefore(renderer.domElement, figure.firstChild);
     figure.classList.add("live");
+    layers(figure, parts, colors, names && names.length === parts.length ? names : null);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
