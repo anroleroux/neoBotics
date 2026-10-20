@@ -7,7 +7,15 @@ their positive terminals point to the back and their negative ends to the
 front. The other two point their positive terminals to the front (+x) and
 have their negative ends against the back wall. All four are a faded pink.
 An IP6505 USB fast-charge board sits on the floor in front of the cells, its
-USB port against the front wall, behind the wall's plug hole.
+USB port against the front wall, behind the wall's plug hole, and a CN3302
+2S charger board sits beside it, its USB-C port behind the wall's USB-C hole.
+
+The cells are wired as two parallel pairs in series (2S2P, 8.4 V full), in a
+U: all four are linked at the back wall, which joins battery_1 and battery_2's
+positive ends to battery_3 and battery_4's negative ends; at the front,
+battery_1 and battery_2's negative ends are the pack's - terminal (at -y) and
+battery_3 and battery_4's positive ends the pack's + terminal (at +y). The
+wiring itself is not modelled.
 Both parts come from their own
 scripts through load_part, so the assembly follows any change to the base's
 l, b, h or wall.
@@ -23,7 +31,8 @@ import cadquery as cq
 
 base = load_part("base")  # floor and end walls at +-x, standing on z = 0
 cell = load_part("battery_18650")  # standing up: axis along z, negative end on z = 0
-charger = load_part("ip6505_charger")  # port at +x, underside on z = 0
+ip6505 = load_part("ip6505_charger")  # USB-A port at +x, underside on z = 0
+cn3302 = load_part("cn3302_charger")  # USB-C port at +x, underside on z = 0
 
 # lay each cell down along x: a quarter turn about y takes its +z axis to +x,
 # putting its negative end at x = 0; then move that end onto the inside of the
@@ -46,12 +55,19 @@ for i, y in enumerate(base.slot_y):
         color=cell_color,
     )
 
-# the charger where the base's plug hole expects it
+# the two USB boards where the base's plug holes expect them
+board_green = cq.Color(0.15, 0.45, 0.30)
 result.add(
-    charger.result,
+    ip6505.result,
     name="ip6505_charger",
-    loc=cq.Location((base.charger_x, base.charger_y, base.charger_z)),
-    color=cq.Color(0.15, 0.45, 0.30),  # board green
+    loc=cq.Location((base.ip6505_x, base.ip6505_y, base.ip6505_z)),
+    color=board_green,
+)
+result.add(
+    cn3302.result,
+    name="cn3302_charger",
+    loc=cq.Location((base.cn3302_x, base.cn3302_y, base.cn3302_z)),
+    color=board_green,
 )
 
 regions = {}

@@ -17,3 +17,7 @@ front faces of the batteries.
 The front wall has a hole for a USB plug, in line with the USB port of the
 IP6505 fast charge board, which sits behind it with its port against the
 inside of the front wall.
+
+Beside it, a CN3302 battery charger board also sits with its USB-C port
+against the inside of the front wall, and the front wall has a hole for a
+USB-C plug in line with that port.

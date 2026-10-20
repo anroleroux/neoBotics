@@ -121,16 +121,18 @@ def test_the_pb4_chassis_carries_four_cells_against_the_back_wall(tmp_path):
     assert {c["color"] for c in cells} == {"#edbac9"}
 
 
-def test_the_pb4_charger_sits_behind_the_plug_hole(tmp_path):
-    """The IP6505 board stands on the floor with its USB mouth against the inside
-    of the front wall, and the 13 x 5.5 mm plug hole runs through that wall."""
+def test_the_pb4_chargers_sit_behind_their_plug_holes(tmp_path):
+    """The IP6505 and CN3302 boards stand on the floor with their USB mouths
+    against the inside of the front wall, each behind its own plug hole."""
     summary = _summary(build_part(CHASSIS / "assembly.py", tmp_path / "out"))
     base = _summary(build_part(CHASSIS / "base" / "part.py", tmp_path / "base"))
-    (board,) = [c for c in summary["components"] if c["name"].endswith("ip6505_charger")]
     l, wall = base["bounding_box"]["size"][0], 3.0
-    assert board["bounding_box_max"][0] == pytest.approx(l / 2 - wall)
-    assert board["bounding_box_min"][2] == pytest.approx(wall)
+    for name in ("ip6505_charger", "cn3302_charger"):
+        (board,) = [c for c in summary["components"] if c["name"].endswith(name)]
+        assert board["bounding_box_max"][0] == pytest.approx(l / 2 - wall)
+        assert board["bounding_box_min"][2] == pytest.approx(wall)
     assert base["regions"]["plug_hole"]["count"] == 4
+    assert base["regions"]["usbc_hole"]["count"] == 4
     assert summary["interference"] == []
 
 
