@@ -128,7 +128,8 @@ def test_the_pb4_lid_fits_the_base(tmp_path):
     wall = 3.0
     rims = 2 * b * wall  # the two end walls' tops
     sides = 2 * (l * wall + 2 * wall * (h - wall))  # the floor's and end walls' edges at +-y
-    assert lid["a"].endswith("/base") and lid["area_mm2"] == pytest.approx(rims + sides)
+    retainers = 2 * (l - 2 * wall) * 8.0  # the side retainers' outer faces, flush at +-y
+    assert lid["a"].endswith("/base") and lid["area_mm2"] == pytest.approx(rims + sides + retainers)
     # the lid overhangs a = 5 mm at each end, adds its thickness each side and on top,
     # and reaches the base's bottom
     assert summary["bounding_box"]["size"] == pytest.approx([l + 10, b + 2 * wall, h + wall])
