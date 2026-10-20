@@ -13,3 +13,7 @@ side retainers run from the back wall to this front mini wall. The centre
 separator runs from 1 mm in front of the back wall to the front mini wall.
 The other two separators stop 1 mm short of the back wall and end at the
 front faces of the batteries.
+
+The front wall has a hole for a USB plug, in line with the USB port of the
+IP6505 fast charge board, which sits behind it with its port against the
+inside of the front wall.

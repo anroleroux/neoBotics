@@ -9,6 +9,8 @@ high as the ribs, stands across the breadth just in front of the cells. The
 side retainers run from the back wall to the mini wall, the centre separator
 from 1 mm in front of the back wall to the mini wall, and the other two
 separators from 1 mm in front of the back wall to the cells' front faces.
+The front wall has a hole for a USB-A plug, in line with the port of the
+IP6505 charger board that sits on the floor behind it.
 
 Assumptions where the description is silent:
 - l, b and h are the outside dimensions; the space between the end walls is
@@ -28,11 +30,18 @@ Assumptions where the description is silent:
 - the side retainers' outer faces are flush with the box's sides, at +-b/2,
   and the five ribs are evenly spaced, so the four cell slots share what is
   left of the breadth equally (18.75 mm each, 0.35 mm wider than a cell);
-- the cells' diameter and length come from battery_18650 through load_part.
+- the cells' diameter and length come from battery_18650 through load_part;
+- the IP6505 charger board sits on the floor, centred across the breadth,
+  its USB port's mouth against the inside of the front wall (+x); the plug
+  hole is the USB-A plug's 12 x 4.5 mm metal shell with 0.5 mm clearance all
+  round (13 x 5.5 mm), square-cornered, centred on the port, so the plug's
+  moulded body stays outside; the board's size and port height come from
+  ip6505_charger through load_part.
 """
 import cadquery as cq
 
 cell = load_part("../battery_18650")  # the cells the ribs hold: diameter, length
+charger = load_part("../ip6505_charger")  # the USB board behind the front wall: length, port
 
 # the driving variables, in mm
 l = 120.0  # length, outside, along x
@@ -63,6 +72,16 @@ gapped = cell_back + rib_back_gap
 rib_x = [(cell_back, front_x0), (gapped, cell_front), (gapped, front_x0),
          (gapped, cell_front), (cell_back, front_x0)]
 
+# the USB charger board and the hole for its plug in the front wall
+plug_w = 12.0  # USB-A plug shell width
+plug_h = 4.5  # USB-A plug shell height
+plug_clearance = 0.5  # all round the plug, in the hole
+charger_x = l / 2 - wall - charger.length / 2  # board centre: its port against the front wall
+charger_y = 0.0  # centred across the breadth
+charger_z = wall  # on the floor
+plug_z = charger_z + charger.usb_axis_z  # the hole's centre height
+assert charger_x - charger.length / 2 > front_x0 + front_t, "the charger does not fit in front of the mini wall"
+
 # the space between the end walls, above the floor, through both long sides
 channel = (
     cq.Workplane("XY", origin=(0, 0, wall))
@@ -85,10 +104,20 @@ front_wall = (
 )
 result = result.union(front_wall)
 
+plug_hole = (
+    cq.Workplane("YZ", origin=(l / 2 - wall, charger_y, plug_z))
+    .rect(plug_w + 2 * plug_clearance, plug_h + 2 * plug_clearance)
+    .extrude(wall)
+)
+result = result.cut(plug_hole)
+
 regions = {
     "rim": result.faces(">Z"),  # the tops of the two end walls, where the lid sits
     "sides": result.faces(">Y or <Y"),  # the open long sides' edges, where the lid's skirts meet
     "bottom": result.faces("<Z"),
+    "plug_hole": result.faces("+Y or -Y or +Z or -Z").filter(  # the hole's four sides
+        lambda f: f.Center().x > l / 2 - wall + 1e-6 and abs(f.Center().y - charger_y) < plug_w
+        and abs(f.Center().z - plug_z) < plug_h),
     "rib_tops": result.faces("+Z").filter(  # the tops of the ribs and the front mini wall
         lambda f: abs(f.Center().z - (wall + rib_h)) < 1e-6),
 }

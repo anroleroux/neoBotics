@@ -115,9 +115,23 @@ def test_the_pb4_chassis_carries_four_cells_against_the_back_wall(tmp_path):
         assert cell["bounding_box_min"][2] == pytest.approx(wall)  # on the floor
     # battery_1 and battery_2 touch the base over their 7 mm buttons, the others
     # over their negative ends; all are the same faded pink
-    assert [c["area_mm2"] for c in summary["contacts"]] == pytest.approx(
+    cell_contacts = [c for c in summary["contacts"] if "battery" in c["b"]]
+    assert [c["area_mm2"] for c in cell_contacts] == pytest.approx(
         [math.pi * 3.5 ** 2] * 2 + [math.pi * 9.2 ** 2] * 2)
     assert {c["color"] for c in cells} == {"#edbac9"}
+
+
+def test_the_pb4_charger_sits_behind_the_plug_hole(tmp_path):
+    """The IP6505 board stands on the floor with its USB mouth against the inside
+    of the front wall, and the 13 x 5.5 mm plug hole runs through that wall."""
+    summary = _summary(build_part(CHASSIS / "assembly.py", tmp_path / "out"))
+    base = _summary(build_part(CHASSIS / "base" / "part.py", tmp_path / "base"))
+    (board,) = [c for c in summary["components"] if c["name"].endswith("ip6505_charger")]
+    l, wall = base["bounding_box"]["size"][0], 3.0
+    assert board["bounding_box_max"][0] == pytest.approx(l / 2 - wall)
+    assert board["bounding_box_min"][2] == pytest.approx(wall)
+    assert base["regions"]["plug_hole"]["count"] == 4
+    assert summary["interference"] == []
 
 
 def test_components_keep_the_colour_they_were_added_with(tmp_path):
