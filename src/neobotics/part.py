@@ -10,6 +10,20 @@ assigns the part to ``result`` and may name places on it in ``regions``:
            built on their own — what a later stage (a study, an assembly)
            refers to by name
 
+Two names are provided to every script:
+
+  load_part(path)  runs the part (or assembly) script in the directory ``path``
+                   names, relative to the calling script's directory, and
+                   returns its top-level names as attributes — so a lid can be
+                   sized from its box (``box = load_part("../base")`` then
+                   ``box.l``), and an assembly can place its parts.
+
+An assembly directory may hold an ``assembly.py`` whose ``result`` is a
+``cq.Assembly``: the parts placed together.  It is checked component by
+component, the components are tested pairwise for interference (shared
+volume) and contact (shared surface: a lid resting on a rim), and its STEP
+keeps one named body per component; its PNG views colour each component.
+
 The script is the B-rep code: running it builds the boundary representation,
 which is written out as BREP (the exact OpenCascade shape), STEP (for other
 CAD tools), STL (for slicers and renderers) and shaded PNG views.  The script
@@ -34,6 +48,7 @@ import sys
 import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 #: Wall-clock limit for building one part, in seconds.
@@ -70,10 +85,58 @@ class BuildResult:
 # --------------------------------------------------------------------------
 # in the child process
 # --------------------------------------------------------------------------
-def _exec_script(source: str, filename: str) -> dict[str, Any]:
-    namespace: dict[str, Any] = {"__name__": "__cadquery_script__"}
-    exec(compile(source, filename, "exec"), namespace)
-    return namespace
+SCRIPT_NAMES = ("part.py", "assembly.py")
+
+
+def script_in(directory: Path) -> Path | None:
+    """The part or assembly script a catalogue directory holds, if any."""
+    for name in SCRIPT_NAMES:
+        if (Path(directory) / name).is_file():
+            return Path(directory) / name
+    return None
+
+
+class _Loader:
+    """``load_part(path)`` inside a script: run the part (or assembly) script in
+    the directory ``path`` names, relative to the calling script's directory,
+    and return its top-level names (``result``, ``regions`` and every parameter)
+    as attributes.  Each script runs once per build; a cycle is an error."""
+
+    def __init__(self) -> None:
+        self.cache: dict[Path, SimpleNamespace] = {}
+        self.stack: list[Path] = []
+
+    def bind(self, directory: Path):
+        def load_part(path: str) -> SimpleNamespace:
+            target = (Path(directory) / path).resolve()
+            script = script_in(target)
+            if script is None:
+                raise PartError(f"load_part({path!r}): no part.py or assembly.py in {target}")
+            if script in self.stack:
+                chain = " -> ".join(p.parent.name for p in [*self.stack, script])
+                raise PartError(f"load_part cycle: {chain}")
+            if script not in self.cache:
+                self.stack.append(script)
+                try:
+                    namespace = self.run(script.read_text(), script)
+                finally:
+                    self.stack.pop()
+                self.cache[script] = SimpleNamespace(
+                    **{k: v for k, v in namespace.items() if not k.startswith("__")})
+            return self.cache[script]
+        return load_part
+
+    def run(self, source: str, script: Path) -> dict[str, Any]:
+        namespace: dict[str, Any] = {"__name__": "__cadquery_script__",
+                                     "load_part": self.bind(script.parent)}
+        exec(compile(source, str(script.name), "exec"), namespace)
+        return namespace
+
+
+def _exec_script(source: str, script: Path) -> dict[str, Any]:
+    loader = _Loader()
+    loader.stack.append(script.resolve())
+    return loader.run(source, script.resolve())
 
 
 def _as_shape(value, what: str):
@@ -101,6 +164,11 @@ def check_part(namespace: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
     if "result" not in namespace:
         raise PartError("the script must assign the part to `result`")
     shape = _as_shape(namespace["result"], "`result`")
+    return _check_solids(shape), _check_regions(namespace)
+
+
+def _check_solids(shape):
+    """``shape`` if it holds valid solids with volume; PartError otherwise."""
     solids = shape.Solids()
     if not solids:
         raise PartError(f"`result` holds no solid (it is a {shape.ShapeType()}); "
@@ -111,7 +179,10 @@ def check_part(namespace: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
                             "(self-intersecting or degenerate geometry)")
         if solid.Volume() <= 0:
             raise PartError(f"solid {i} of `result` has no volume")
+    return shape
 
+
+def _check_regions(namespace: dict[str, Any]) -> dict[str, Any]:
     regions = namespace.get("regions", {}) or {}
     if not isinstance(regions, dict):
         raise PartError("`regions` must be a dict of name -> selection")
@@ -123,11 +194,127 @@ def check_part(namespace: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
         if region.ShapeType() == "Solid":
             raise PartError(f"region {name!r} is a solid; regions are vertices, edges or faces")
         checked[name] = region
-    return shape, checked
+    return checked
 
 
-def summarize(shape, regions: dict[str, Any]) -> dict[str, Any]:
-    """Facts a reviewer checks the part against: size, volume, topology, regions."""
+def components(assembly) -> list[tuple[str, Any]]:
+    """(path name, shape in place) for every shape in a cq.Assembly, nested ones included."""
+    import cadquery as cq
+
+    out = []
+
+    def visit(node, loc, prefix):
+        here = loc * node.loc
+        name = f"{prefix}/{node.name}" if prefix else node.name
+        if node.obj is not None:
+            out.append((name, _as_shape(node.obj, f"component {name!r}").moved(here)))
+        for child in node.children:
+            visit(child, here, name)
+
+    visit(assembly, cq.Location(), "")
+    return out
+
+
+def check_assembly(namespace: dict[str, Any]) -> tuple[Any, list[tuple[str, Any]], dict[str, Any]]:
+    """(the assembly as one compound, its placed components, its regions)."""
+    import cadquery as cq
+
+    placed = components(namespace["result"])
+    if not placed:
+        raise PartError("the assembly in `result` holds no shapes")
+    for name, shape in placed:
+        try:
+            _check_solids(shape)
+        except PartError as exc:
+            raise PartError(f"component {name!r}: {exc}") from None
+    compound = cq.Compound.makeCompound([s for _, s in placed])
+    return compound, placed, _check_regions(namespace)
+
+
+def _boxes_overlap(a, b, tolerance: float) -> bool:
+    """Whether two shapes' bounding boxes meet, touching included (a cheap pre-check)."""
+    p, q = a.BoundingBox(), b.BoundingBox()
+    return (p.xmin <= q.xmax + tolerance and q.xmin <= p.xmax + tolerance
+            and p.ymin <= q.ymax + tolerance and q.ymin <= p.ymax + tolerance
+            and p.zmin <= q.zmax + tolerance and q.zmin <= p.zmax + tolerance)
+
+
+def contact_area(a, b, gap: float = 1e-4) -> float:
+    """The area over which two solids touch, through planar faces: pairs that
+    face each other (opposite normals) in the same plane (within ``gap``),
+    summed over the region the two faces share.
+
+    Face by face rather than from the solids' intersection, which OpenCascade
+    returns empty when two faces coincide exactly (a slab on a box of the same
+    footprint).
+    """
+    planar_b = [(f, f.normalAt(), f.BoundingBox()) for f in b.Faces() if f.geomType() == "PLANE"]
+    area = 0.0
+    for fa in a.Faces():
+        if fa.geomType() != "PLANE":
+            continue
+        na, ca, bba = fa.normalAt(), fa.Center(), fa.BoundingBox()
+        for fb, nb, bbb in planar_b:
+            if na.dot(nb) > -0.9999 or abs((fb.Center() - ca).dot(na)) > gap:
+                continue
+            if (bba.xmin > bbb.xmax + gap or bbb.xmin > bba.xmax + gap or bba.ymin > bbb.ymax + gap
+                    or bbb.ymin > bba.ymax + gap or bba.zmin > bbb.zmax + gap
+                    or bbb.zmin > bba.zmax + gap):
+                continue
+            area += sum(f.Area() for f in fa.intersect(fb).Faces())
+    return area
+
+
+def interference(placed: list[tuple[str, Any]], tolerance: float = 1e-6
+                 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """(clashes, contacts) between the placed components, pair by pair.
+
+    A clash is shared volume: solids in the intersection, in mm^3 (a lip too
+    wide for its opening).  A contact is shared surface with no shared volume:
+    faces in the intersection, in mm^2 (a lid resting on a rim).  Only solids
+    count as volume: OpenCascade reports a face-only intersection's "volume"
+    as its area, which would make every seated part look like a clash.
+    """
+    clashes, contacts = [], []
+    for i, (name_a, a) in enumerate(placed):
+        for name_b, b in placed[i + 1:]:
+            if not _boxes_overlap(a, b, tolerance):
+                continue
+            common = a.intersect(b)
+            volume = sum(s.Volume() for s in common.Solids())
+            if volume > tolerance:
+                clashes.append({"a": name_a, "b": name_b, "volume_mm3": round(volume, 4)})
+                continue
+            area = contact_area(a, b)
+            if area > tolerance:
+                contacts.append({"a": name_a, "b": name_b, "area_mm2": round(area, 4)})
+    return clashes, contacts
+
+
+def summarize(shape, regions: dict[str, Any], script: str = "part.py",
+              placed: list[tuple[str, Any]] | None = None) -> dict[str, Any]:
+    """Facts a reviewer checks the part against: size, volume, topology, regions;
+    for an assembly also its components and any interference between them."""
+    summary = _summarize_shape(shape, regions)
+    summary = {"kind": "assembly" if placed is not None else "part", "script": script, **summary}
+    if placed is not None:
+        summary["components"] = [
+            {"name": name, "stl": f"component_{i:02d}.stl",
+             "volume_mm3": round(sum(x.Volume() for x in s.Solids()), 4),
+             "bounding_box_min": [round(v, 4) for v in _corner(s, "min")],
+             "bounding_box_max": [round(v, 4) for v in _corner(s, "max")]}
+            for i, (name, s) in enumerate(placed, start=1)
+        ]
+        summary["interference"], summary["contacts"] = interference(placed)
+    return summary
+
+
+def _corner(shape, which: str) -> tuple[float, float, float]:
+    bb = shape.BoundingBox()
+    return (bb.xmin, bb.ymin, bb.zmin) if which == "min" else (bb.xmax, bb.ymax, bb.zmax)
+
+
+def _summarize_shape(shape, regions: dict[str, Any]) -> dict[str, Any]:
     bb = shape.BoundingBox()
     solids = shape.Solids()
     return {
@@ -163,38 +350,65 @@ def _region_count(region) -> int:
     return 1
 
 
-def export_part(shape, source: str, out_dir: Path) -> dict[str, Path]:
-    """Write the script, BREP, STEP, STL and PNG views of a built part."""
+def export_part(shape, source: str, out_dir: Path, script_name: str = "part.py",
+                assembly=None, placed: list[tuple[str, Any]] | None = None) -> dict[str, Path]:
+    """Write the script, BREP, STEP, STL and PNG views of a built part.
+
+    For an assembly the STEP keeps its structure: one named, placed body per
+    component.  The other files show the assembly as one compound.
+    """
     import cadquery as cq
 
-    from .cadview import render_shape
+    from .cadview import render_components, render_shape
 
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     files = {kind: out_dir / name for kind, name in FILES.items() if kind != "summary"}
+    files["script"] = out_dir / script_name
     files["script"].write_text(source)
     shape.exportBrep(str(files["brep"]))
     workplane = cq.Workplane("XY").add(shape)
-    cq.exporters.export(workplane, str(files["step"]))
+    if assembly is not None:
+        assembly.export(str(files["step"]), "STEP")
+    else:
+        cq.exporters.export(workplane, str(files["step"]))
     diag = max(shape.BoundingBox().DiagonalLength, 1e-9)
     cq.exporters.export(workplane, str(files["stl"]), tolerance=diag * 1e-3, angularTolerance=0.2)
-    render_shape(shape, files["png"], view="iso")
-    render_shape(shape, files["png_rear"], view="rear_below")
+    if placed:  # an assembly: one colour per component, in order, and one STL each
+        shapes = [s for _, s in placed]
+        for i, component in enumerate(shapes, start=1):
+            files[f"component_{i:02d}"] = out_dir / f"component_{i:02d}.stl"
+            cq.exporters.export(cq.Workplane("XY").add(component), str(files[f"component_{i:02d}"]),
+                                tolerance=diag * 1e-3, angularTolerance=0.2)
+        render_components(shapes, files["png"], view="iso")
+        render_components(shapes, files["png_rear"], view="rear_below")
+    else:
+        render_shape(shape, files["png"], view="iso")
+        render_shape(shape, files["png_rear"], view="rear_below")
     return files
 
 
 def _build_here(script: Path, out_dir: Path) -> dict[str, Any]:
     """Build, check and export one script in this process; a JSON-able report."""
+    import cadquery as cq
+
     source = script.read_text()
     try:
-        namespace = _exec_script(source, str(script.name))
+        namespace = _exec_script(source, script)
+    except PartError as exc:  # load_part trouble, already explained
+        return {"ok": False, "error": str(exc)}
     except Exception:  # the script's own error, with its line numbers
         tb = traceback.format_exc()
         return {"ok": False, "error": "the script raised an error:\n" + tb[-TRACEBACK_CHARS:]}
     try:
-        shape, regions = check_part(namespace)
-        summary = summarize(shape, regions)
-        files = export_part(shape, source, out_dir)
+        if isinstance(namespace.get("result"), cq.Assembly):
+            shape, placed, regions = check_assembly(namespace)
+            summary = summarize(shape, regions, script.name, placed)
+            files = export_part(shape, source, out_dir, script.name, namespace["result"], placed)
+        else:
+            shape, regions = check_part(namespace)
+            summary = summarize(shape, regions, script.name)
+            files = export_part(shape, source, out_dir, script.name)
     except PartError as exc:
         return {"ok": False, "error": str(exc)}
     except Exception:

@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       design:
-        description: 'a directory under designs/ holding description.md, to generate with Claude'
+        description: 'a part designation under products/, e.g. PB4/chassis/lid, holding description.md, to generate with Claude'
         required: false
         default: ''
 
@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 jobs:
-  # Tests and the hand-written example: no model, no API key.
+  # Tests, every committed part script, and the site: no model, no API key.
   build:
     runs-on: ubuntu-latest
     steps:
@@ -40,15 +40,41 @@ jobs:
       - name: Run tests
         run: python -m pytest -q
 
-      - name: Build the example part
-        run: neobotics cad examples/motor_mount/part.py --out results/motor_mount
+      # every part under products/ (<product>/<assembly>/.../<part>/part.py),
+      # then the catalogue pages; a part that fails to build fails the job
+      - name: Build the parts and the site
+        run: neobotics site products --out results --site site
 
-      - name: Upload the example
+      - name: Upload the parts
         uses: actions/upload-artifact@v4
         with:
-          name: motor-mount
+          name: parts
           path: results
           if-no-files-found: error
+
+      - name: Upload the site for Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    # one deployment at a time; let a running one finish
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
 
   # NL -> script -> CAD with Claude, on demand: Actions -> cad -> Run workflow,
   # naming a design directory.  Needs the ANTHROPIC_API_KEY repository secret.
@@ -77,13 +103,13 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           DESIGN: ${{ inputs.design }}
         run: |
-          neobotics generate --description "designs/$DESIGN/description.md" \
+          neobotics generate --description "products/$DESIGN/description.md" \
             --out "results/$DESIGN"
 
       - name: Upload the generated part
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: generated-${{ inputs.design }}
+          name: generated-part
           path: results
           if-no-files-found: warn

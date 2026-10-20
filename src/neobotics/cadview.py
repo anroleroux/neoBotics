@@ -32,6 +32,15 @@ VIEWS = {"iso": (VIEW_AZIMUTH, VIEW_ELEVATION), "rear_below": (VIEW_AZIMUTH + 18
 FEATURE_ANGLE = 30.0
 
 _FACE_RGB = np.array([0.36, 0.56, 0.78])  # a mid steel blue, legible on light and dark pages
+#: One colour per component of an assembly, in order; the first is _FACE_RGB.
+COMPONENT_RGB = np.array([
+    [0.36, 0.56, 0.78],  # steel blue
+    [0.88, 0.56, 0.24],  # amber
+    [0.40, 0.68, 0.45],  # green
+    [0.62, 0.48, 0.78],  # violet
+    [0.80, 0.40, 0.45],  # brick
+    [0.45, 0.70, 0.72],  # teal
+])
 _EDGE_RGBA = (0.10, 0.14, 0.20, 0.9)
 _LIGHT = np.array([0.35, 0.8, 0.5])
 
@@ -130,6 +139,7 @@ def render_triangles(
     azimuth: float = VIEW_AZIMUTH,
     elevation: float = VIEW_ELEVATION,
     supersample: int = 2,
+    colors: np.ndarray | None = None,
 ) -> Path:
     """Draw a triangle surface to a transparent PNG and return its path.
 
@@ -138,7 +148,8 @@ def render_triangles(
     ``two_sided`` shades every triangle whichever way it faces (an open
     surface); otherwise triangles facing away from the camera are culled,
     which assumes a closed, outward-oriented surface.  Feature edges are drawn
-    where the z-buffer shows them unoccluded.
+    where the z-buffer shows them unoccluded.  ``colors`` gives each triangle
+    its own RGB (an assembly's components); by default all are steel blue.
     """
     import matplotlib
 
@@ -177,7 +188,9 @@ def render_triangles(
 
     light = _LIGHT / np.linalg.norm(_LIGHT)
     shade = 0.45 + 0.55 * np.clip(normals[tri_idx] @ light, 0.0, 1.0)
-    face_rgb = np.clip(shade[:, None] * _FACE_RGB, 0, 1)
+    base_rgb = (np.broadcast_to(_FACE_RGB, (len(triangles), 3)) if colors is None
+                else np.asarray(colors, float))[tri_idx]
+    face_rgb = np.clip(shade[:, None] * base_rgb, 0, 1)
     image = np.zeros((px_h, px_w, 4))
     hit = ids >= 0
     image[hit, :3] = face_rgb[ids[hit]]
@@ -263,6 +276,21 @@ def render_shape(shape, png_path: Path, title: str | None = None, view: str = "i
     azimuth, elevation = VIEWS[view]
     return render_triangles(points, triangles, png_path, title=title, two_sided=not has_volume,
                             azimuth=azimuth, elevation=elevation)
+
+
+def render_components(shapes: list, png_path: Path, title: str | None = None,
+                      view: str = "iso") -> Path:
+    """Render an assembly's placed components to PNG, each in its own colour."""
+    points, triangles, colors, offset = [], [], [], 0
+    for i, shape in enumerate(shapes):
+        p, t = shape_triangles(shape)
+        points.append(p)
+        triangles.append(t + offset)
+        colors.append(np.tile(COMPONENT_RGB[i % len(COMPONENT_RGB)], (len(t), 1)))
+        offset += len(p)
+    azimuth, elevation = VIEWS[view]
+    return render_triangles(np.vstack(points), np.vstack(triangles), png_path, title=title,
+                            azimuth=azimuth, elevation=elevation, colors=np.vstack(colors))
 
 
 def render_brep(brep_path: Path, png_path: Path, title: str | None = None, view: str = "iso") -> Path:
