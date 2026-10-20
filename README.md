@@ -179,9 +179,9 @@ On a push, it also deploys the site to GitHub Pages:
 - `products/<product>/index.html`, and one page per assembly below it: that
   level's contents as cards you can click into, then its assembled model with
   its fit; under the model's 3D view, each component can be hidden or made
-  see-through;
-- one page per part: its designation, a 3D view you can orbit (and make
-  see-through), the
+  see-through, and a section slider cuts the model along x, y or z;
+- one page per part: its designation, a 3D view you can orbit, cut with a
+  section slider and make see-through, the
   description, measurements, and STEP / STL / BREP / script downloads.
 
 Every page leads back up through a breadcrumb and a "Back to …" link. Links are

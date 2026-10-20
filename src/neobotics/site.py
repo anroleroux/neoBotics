@@ -547,13 +547,20 @@ background:var(--bg);min-width:150px;position:relative}
 .part-grid{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:20px}
 @media (max-width:820px){.part-grid{grid-template-columns:1fr}}
 .viewer{margin:0;align-self:start;background:var(--viewer);border-radius:10px;overflow:hidden;position:relative;
-aspect-ratio:4/3;display:flex;flex-direction:column}
+aspect-ratio:2/3;max-height:calc(100vh - 32px);display:flex;flex-direction:column}
 .viewer canvas{display:block;width:100%;flex:1;min-height:0;touch-action:none;cursor:grab}
 .viewer canvas:active{cursor:grabbing}
 .viewer .fallback{width:100%;flex:1;min-height:0;object-fit:contain}
 .viewer.live .fallback{display:none}
 .viewer figcaption{font-size:.8rem;color:var(--muted);padding:6px 10px;border-top:1px solid var(--line)}
 .viewer button{font:inherit;color:var(--accent);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline}
+.viewer .section{display:flex;align-items:center;gap:6px;padding:6px 10px;border-top:1px solid var(--line);
+font-size:.8rem;color:var(--muted)}
+.viewer .section .axis{text-decoration:none;padding:1px 6px;border:1px solid var(--line);border-radius:4px}
+.viewer .section .axis[aria-pressed=true]{background:var(--code-bg);border-color:var(--accent)}
+.viewer .section input[type=range]{flex:1;min-width:60px;accent-color:var(--accent)}
+.viewer .section input[type=range]:disabled{opacity:.4}
+.viewer .section .flip{text-decoration:none}
 .viewer .layers{display:flex;flex-wrap:wrap;gap:4px 6px;padding:6px 10px;border-top:1px solid var(--line);
 font-size:.8rem;max-height:30%;overflow:auto}
 .viewer .layer{display:inline-flex;align-items:center;gap:5px;padding:2px 4px 2px 6px;border:1px solid var(--line);
@@ -702,6 +709,62 @@ const HALF_DISC = '<svg width=12 height=12 viewBox="0 0 12 12" aria-hidden=true 
 
 // one chip per component under the view: a checkbox shows or hides it, the
 // half-disc button makes it see-through; a single part gets the button alone
+// a section view: pick an axis, then slide the cutting plane along it; the
+// part on the far side of the plane is cut away (flip keeps the other side)
+function section(figure, parts, size, renderer) {
+  const AXES = {x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1)};
+  const plane = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0);
+  let axis = null, flipped = false;
+  const bar = document.createElement("div");
+  bar.className = "section";
+  bar.append("Section");
+  const slider = document.createElement("input");
+  slider.type = "range";
+  slider.disabled = true;
+  slider.setAttribute("aria-label", "section position");
+  const flip = document.createElement("button");
+  flip.type = "button";
+  flip.className = "flip";
+  flip.textContent = "flip";
+  flip.disabled = true;
+  const update = () => {
+    const v = Number(slider.value);
+    plane.normal.copy(AXES[axis]).multiplyScalar(flipped ? 1 : -1);
+    plane.constant = flipped ? -v : v;
+  };
+  const buttons = ["off", "x", "y", "z"].map((name) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "axis";
+    b.textContent = name;
+    b.setAttribute("aria-pressed", String(name === "off"));
+    b.addEventListener("click", () => {
+      axis = name === "off" ? null : name;
+      buttons.forEach((o) => o.setAttribute("aria-pressed", String(o === b)));
+      slider.disabled = flip.disabled = !axis;
+      parts.forEach(({material, edges}) => {
+        material.clippingPlanes = edges.material.clippingPlanes = axis ? [plane] : [];
+        material.side = axis ? THREE.DoubleSide : THREE.FrontSide;  // see inside the cut
+        material.needsUpdate = edges.material.needsUpdate = true;
+      });
+      if (axis) {
+        const half = size[axis] / 2;
+        slider.min = -half;
+        slider.max = half;
+        slider.step = size[axis] / 400;
+        slider.value = 0;  // start halfway through the model
+        update();
+      }
+    });
+    return b;
+  });
+  slider.addEventListener("input", update);
+  flip.addEventListener("click", () => { flipped = !flipped; update(); });
+  bar.append(...buttons, slider, flip);
+  renderer.localClippingEnabled = true;
+  figure.insertBefore(bar, figure.querySelector("figcaption"));
+}
+
 function layers(figure, parts, colors, names) {
   const bar = document.createElement("div");
   bar.className = "layers";
@@ -783,6 +846,7 @@ function mount(figure) {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     figure.insertBefore(renderer.domElement, figure.firstChild);
     figure.classList.add("live");
+    section(figure, parts, box.getSize(new THREE.Vector3()), renderer);
     layers(figure, parts, colors, names && names.length === parts.length ? names : null);
 
     const controls = new OrbitControls(camera, renderer.domElement);
