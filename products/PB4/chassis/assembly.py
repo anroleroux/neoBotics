@@ -19,7 +19,7 @@ cell = load_part("battery_18650")  # standing up: axis along z, negative end on 
 # lay each cell down along +x: a quarter turn about y takes its +z axis to +x,
 # putting its negative end at x = 0; then move that end onto the inside of the
 # back wall, and lift the cell onto the floor
-back_wall_inside = -base.l / 2 + base.wall
+back_wall_inside = base.cell_back
 axis_height = base.wall + cell.diameter / 2
 
 result = cq.Assembly(name="chassis").add(base.result, name="base", color=cq.Color(0.36, 0.56, 0.78))
