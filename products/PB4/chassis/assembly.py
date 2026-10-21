@@ -9,7 +9,9 @@ have their negative ends against the back wall. All four are a faded pink.
 Two IP6505 USB fast-charge boards sit side by side on the floor in front of
 the cells, their USB ports against the front wall, each behind one of the
 wall's USB-A holes, and a CN3302 2S charger board sits beside them at +y,
-its USB-C port behind the wall's USB-C hole.
+its USB-C port behind the wall's USB-C hole. The 2S BMS stands on edge
+against the front face of the front mini wall, its components facing the
+front.
 
 The cells are wired as two parallel pairs in series (2S2P, 8.4 V full), in a
 U: all four are linked at the back wall, which joins battery_1 and battery_2's
@@ -34,6 +36,7 @@ base = load_part("base")  # floor and end walls at +-x, standing on z = 0
 cell = load_part("battery_18650")  # standing up: axis along z, negative end on z = 0
 ip6505 = load_part("ip6505_charger")  # USB-A port at +x, underside on z = 0
 cn3302 = load_part("cn3302_charger")  # USB-C port at +x, underside on z = 0
+bms = load_part("bms_2s")  # lying flat, components up, length along y, underside on z = 0
 
 # lay each cell down along x: a quarter turn about y takes its +z axis to +x,
 # putting its negative end at x = 0; then move that end onto the inside of the
@@ -70,6 +73,16 @@ result.add(
     name="cn3302_charger",
     loc=cq.Location((base.cn3302_x, base.cn3302_y, base.cn3302_z)),
     color=board_green,
+)
+
+# stand the BMS up: a quarter turn about y takes its component side (+z) to the
+# front (+x) and its width (x) to the vertical; its back then lies on the
+# mini wall's front face
+result.add(
+    bms.result,
+    name="bms_2s",
+    loc=cq.Location(cq.Vector(base.bms_x, base.bms_y, base.bms_z), cq.Vector(0, 1, 0), 90),
+    color=cq.Color(0.20, 0.30, 0.55),  # board blue
 )
 
 regions = {}

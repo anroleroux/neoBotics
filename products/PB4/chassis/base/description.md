@@ -25,3 +25,6 @@ USB-C plug in line with that port.
 A second IP6505 fast charge board sits next to the first, on the other side
 from the CN3302, with its USB port against the inside of the front wall too,
 and the front wall has a second USB plug hole in line with it.
+
+The 2S BMS stands on edge against the front face of the front mini wall, with
+its component side facing the front.

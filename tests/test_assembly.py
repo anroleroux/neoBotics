@@ -136,6 +136,21 @@ def test_the_pb4_chargers_sit_behind_their_plug_holes(tmp_path):
     assert summary["interference"] == []
 
 
+def test_the_pb4_bms_stands_against_the_mini_wall(tmp_path):
+    """The 2S BMS stands on edge on the floor, its back on the front mini wall's
+    front face, its length across the breadth and its parts facing the front."""
+    summary = _summary(build_part(CHASSIS / "assembly.py", tmp_path / "out"))
+    (bms,) = [c for c in summary["components"] if c["name"].endswith("bms_2s")]
+    lo, hi = bms["bounding_box_min"], bms["bounding_box_max"]
+    mini_wall_front = -60.0 + 3.0 + 65.0 + 1.0 + 2.0  # back wall inside, a cell, the gap, the wall
+    assert lo[0] == pytest.approx(mini_wall_front) and hi[0] - lo[0] == pytest.approx(2.6)
+    assert hi[1] - lo[1] == pytest.approx(38.0) and hi[2] - lo[2] == pytest.approx(8.0)
+    assert lo[2] == pytest.approx(3.0)  # on the floor
+    (touch,) = [c for c in summary["contacts"] if c["b"].endswith("bms_2s")]
+    # its back on the wall, and the 1 mm board's edge on the floor
+    assert touch["area_mm2"] == pytest.approx(38.0 * 8.0 + 38.0 * 1.0)
+
+
 def test_components_keep_the_colour_they_were_added_with(tmp_path):
     """A component added with a colour keeps it, in the summary, the PNG views
     and the site's viewer; one without falls back to the palette."""

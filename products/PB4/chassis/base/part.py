@@ -45,13 +45,18 @@ Assumptions where the description is silent:
   the front wall too; its plug hole is the USB-C plug's 8.25 x 2.4 mm shell
   with 0.5 mm clearance all round (9.25 x 3.4 mm), with fully rounded ends
   like the plug, centred on the port; the board's size and port height come
-  from cn3302_charger through load_part.
+  from cn3302_charger through load_part;
+- the 2S BMS stands on edge on the floor, its plain back flat against the
+  front face of the front mini wall and its components facing the front
+  (+x), centred across the breadth, its length along y; its size comes from
+  bms_2s through load_part.
 """
 import cadquery as cq
 
 cell = load_part("../battery_18650")  # the cells the ribs hold: diameter, length
 ip6505 = load_part("../ip6505_charger")  # the USB-A output board behind the front wall
 cn3302 = load_part("../cn3302_charger")  # the USB-C battery charger beside it
+bms = load_part("../bms_2s")  # the battery protection board, on the mini wall's front
 
 # the driving variables, in mm
 l = 120.0  # length, outside, along x
@@ -105,6 +110,12 @@ for board, x in ((ip6505, ip6505_x), (cn3302, cn3302_x)):
     assert x - board.length / 2 > front_x0 + front_t, "a USB board does not fit in front of the mini wall"
 assert cn3302_y + cn3302.width / 2 < b / 2 - rib_t, "the CN3302 board does not fit inside the side retainer"
 assert min(ip6505_ys) - ip6505.width / 2 > -b / 2 + rib_t, "an IP6505 board does not fit inside the side retainer"
+
+# the BMS, on edge against the mini wall's front face, components to the front
+bms_x = front_x0 + front_t  # its back
+bms_y = 0.0  # centred across the breadth
+bms_z = wall + bms.width / 2  # its centre height: standing on the floor
+assert bms_x + bms.height < ip6505_x - ip6505.length / 2, "the BMS does not fit in front of the mini wall"
 
 # the space between the end walls, above the floor, through both long sides
 channel = (
