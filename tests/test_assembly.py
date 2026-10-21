@@ -118,7 +118,7 @@ def test_the_pb4_chassis_carries_four_cells_against_the_back_wall(tmp_path):
     cell_contacts = [c for c in summary["contacts"] if "battery" in c["b"]]
     assert [c["area_mm2"] for c in cell_contacts] == pytest.approx(
         [math.pi * 3.5 ** 2] * 2 + [math.pi * 9.2 ** 2] * 2)
-    assert {c["color"] for c in cells} == {"#edbac9"}
+    assert {c["meshes"][0]["color"] for c in cells} == {"#edbac9"}
 
 
 def test_the_pb4_chargers_sit_behind_their_plug_holes(tmp_path):
@@ -159,11 +159,23 @@ def test_components_keep_the_colour_they_were_added_with(tmp_path):
     script.write_text(script.read_text().replace(
         'name="slab",', 'name="slab", color=cq.Color(1, 0, 0),'))
     summary = _summary(build_part(script, tmp_path / "out"))
-    assert [c["color"] for c in summary["components"]] == ["#5c8fc7", "#ff0000"]
+    assert [c["meshes"][0]["color"] for c in summary["components"]] == ["#5c8fc7", "#ff0000"]
     _, failures = build_catalog(root, tmp_path / "results", tmp_path / "site", log=lambda _: None)
     assert not failures
     page = (tmp_path / "site/products/P1/stack/index.html").read_text()
-    assert 'data-names="stack/box stack/slab" data-colors="#5c8fc7 #ff0000"' in page
+    assert 'data-names="stack/box stack/slab" data-colors="#5c8fc7 #ff0000" data-groups="0 1"' in page
+
+
+def test_the_product_model_lists_only_what_it_holds_directly(tmp_path):
+    """PB4's model holds the chassis (a sub-assembly) and the lid: those are its
+    two components, the chassis one for all its parts; every part is still
+    drawn, in its own mesh and colour, inside the chassis."""
+    summary = _summary(build_part(PRODUCTS / "PB4" / "assembly.py", tmp_path / "out"))
+    assert [c["name"] for c in summary["components"]] == ["PB4/chassis", "PB4/lid"]
+    chassis, lid = summary["components"]
+    assert "PB4/chassis/bms_2s" in [m["name"] for m in chassis["meshes"]]
+    assert len(chassis["meshes"]) > 1 and len(lid["meshes"]) == 1
+    assert all(c["a"] == "PB4/chassis" and c["b"] == "PB4/lid" for c in summary["contacts"])
 
 
 def test_the_pb4_lid_fits_the_base(tmp_path):
@@ -180,7 +192,7 @@ def test_the_pb4_lid_fits_the_base(tmp_path):
     sides = 2 * (l * wall + 2 * wall * (h - wall))  # the floor's and end walls' edges at +-y
     retainers = 2 * (65.0 + 1.0 + 2.0) * 12.0  # the side retainers' and front mini wall's
     # outer faces, flush at +-y: a cell length, the 1 mm gap and the 2 mm wall, 12 mm tall
-    assert lid["a"].endswith("/base") and lid["area_mm2"] == pytest.approx(rims + sides + retainers)
+    assert lid["a"] == "PB4/chassis" and lid["area_mm2"] == pytest.approx(rims + sides + retainers)
     # the lid overhangs a = 5 mm at each end, adds its thickness each side and on top,
     # and reaches the base's bottom
     assert summary["bounding_box"]["size"] == pytest.approx([l + 10, b + 2 * wall, h + wall])

@@ -19,11 +19,12 @@ Two names are provided to every script:
                    ``box.l``), and an assembly can place its parts.
 
 An assembly directory may hold an ``assembly.py`` whose ``result`` is a
-``cq.Assembly``: the parts placed together.  It is checked component by
-component, the components are tested pairwise for interference (shared
-volume) and contact (shared surface: a lid resting on a rim), and its STEP
-keeps one named body per component; its PNG views colour each component: in
-the ``color`` it was added with (or its parent's), else from a palette.
+``cq.Assembly``: the parts placed together.  It is checked shape by
+shape, and its components (what was added to it directly: a part, or a whole
+sub-assembly as one) are tested pairwise for interference (shared volume) and
+contact (shared surface: a lid resting on a rim).  Its STEP keeps one named
+body per shape, and its PNG views and per-shape STLs colour each shape in the
+``color`` it was added with (or its parent's), else from a palette.
 
 The script is the B-rep code: running it builds the boundary representation,
 which is written out as BREP (the exact OpenCascade shape), STEP (for other
@@ -199,7 +200,8 @@ def _check_regions(namespace: dict[str, Any]) -> dict[str, Any]:
 
 
 def components(assembly) -> list[tuple[str, Any]]:
-    """(path name, shape in place) for every shape in a cq.Assembly, nested ones included."""
+    """(path name, shape in place) for every shape in a cq.Assembly, nested ones
+    included: what is drawn, one mesh each."""
     import cadquery as cq
 
     out = []
@@ -214,6 +216,40 @@ def components(assembly) -> list[tuple[str, Any]]:
 
     visit(assembly, cq.Location(), "")
     return out
+
+
+def top_level(assembly) -> list[tuple[str, list[int]]]:
+    """(name, indices into components()) for each thing added to the assembly
+    directly: a part is one shape, a sub-assembly all the shapes inside it.
+    A shape on the assembly's own node counts as a component of its own."""
+    out: list[tuple[str, list[int]]] = []
+    count = 0
+
+    def visit(node, group):
+        nonlocal count
+        if node.obj is not None:
+            out[group][1].append(count)
+            count += 1
+        for child in node.children:
+            visit(child, group)
+
+    if assembly.obj is not None:
+        out.append((assembly.name, [count]))
+        count += 1
+    for child in assembly.children:
+        out.append((f"{assembly.name}/{child.name}", []))
+        visit(child, len(out) - 1)
+    return [(name, shapes) for name, shapes in out if shapes]
+
+
+def group(placed: list[tuple[str, Any]], groups: list[tuple[str, list[int]]]
+          ) -> list[tuple[str, Any]]:
+    """(name, one shape) per top-level component: a sub-assembly's shapes as a compound."""
+    import cadquery as cq
+
+    return [(name, placed[shapes[0]][1] if len(shapes) == 1
+             else cq.Compound.makeCompound([placed[i][1] for i in shapes]))
+            for name, shapes in groups]
 
 
 def component_colors(assembly) -> list[str]:
@@ -316,23 +352,29 @@ def interference(placed: list[tuple[str, Any]], tolerance: float = 1e-6
 
 def summarize(shape, regions: dict[str, Any], script: str = "part.py",
               placed: list[tuple[str, Any]] | None = None,
-              colors: list[str] | None = None) -> dict[str, Any]:
+              colors: list[str] | None = None,
+              groups: list[tuple[str, list[int]]] | None = None) -> dict[str, Any]:
     """Facts a reviewer checks the part against: size, volume, topology, regions;
-    for an assembly also its components (with their colours, when given) and any
-    interference between them."""
+    for an assembly also its components and any interference between them.
+
+    An assembly's components are what was added to it directly (``groups``,
+    from top_level; by default every shape on its own).  Each lists its meshes:
+    the STL and colour of every shape inside it, as drawn."""
     summary = _summarize_shape(shape, regions)
     summary = {"kind": "assembly" if placed is not None else "part", "script": script, **summary}
     if placed is not None:
+        groups = groups or [(name, [i]) for i, (name, _) in enumerate(placed)]
+        grouped = group(placed, groups)
         summary["components"] = [
-            {"name": name, "stl": f"component_{i:02d}.stl",
+            {"name": name,
              "volume_mm3": round(sum(x.Volume() for x in s.Solids()), 4),
              "bounding_box_min": [round(v, 4) for v in _corner(s, "min")],
-             "bounding_box_max": [round(v, 4) for v in _corner(s, "max")]}
-            for i, (name, s) in enumerate(placed, start=1)
+             "bounding_box_max": [round(v, 4) for v in _corner(s, "max")],
+             "meshes": [{"name": placed[i][0], "stl": f"component_{i + 1:02d}.stl",
+                         **({"color": colors[i]} if colors else {})} for i in shapes]}
+            for (name, s), (_, shapes) in zip(grouped, groups)
         ]
-        for component, color in zip(summary["components"], colors or []):
-            component["color"] = color
-        summary["interference"], summary["contacts"] = interference(placed)
+        summary["interference"], summary["contacts"] = interference(grouped)
     return summary
 
 
@@ -402,7 +444,7 @@ def export_part(shape, source: str, out_dir: Path, script_name: str = "part.py",
         cq.exporters.export(workplane, str(files["step"]))
     diag = max(shape.BoundingBox().DiagonalLength, 1e-9)
     cq.exporters.export(workplane, str(files["stl"]), tolerance=diag * 1e-3, angularTolerance=0.2)
-    if placed:  # an assembly: one colour per component (``colors``), and one STL each
+    if placed:  # an assembly: one colour (``colors``) and one STL per shape
         shapes = [s for _, s in placed]
         for i, component in enumerate(shapes, start=1):
             files[f"component_{i:02d}"] = out_dir / f"component_{i:02d}.stl"
@@ -432,7 +474,8 @@ def _build_here(script: Path, out_dir: Path) -> dict[str, Any]:
         if isinstance(namespace.get("result"), cq.Assembly):
             shape, placed, regions = check_assembly(namespace)
             colors = component_colors(namespace["result"])
-            summary = summarize(shape, regions, script.name, placed, colors)
+            summary = summarize(shape, regions, script.name, placed, colors,
+                                top_level(namespace["result"]))
             files = export_part(shape, source, out_dir, script.name, namespace["result"], placed,
                                 colors)
         else:

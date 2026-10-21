@@ -130,7 +130,7 @@ def read_part(run_dir: Path, name: str | None = None) -> Part:
 
 
 def _published(part: Part) -> list[str]:
-    components = [c["stl"] for c in part.summary.get("components", []) if c.get("stl")]
+    components = [m["stl"] for c in part.summary.get("components", []) for m in c.get("meshes", [])]
     return [f for f, *_ in DOWNLOADS] + [part.script_name] + IMAGES + components
 
 
@@ -275,12 +275,16 @@ def _detail(part: Part, base: str, *, model: bool = False) -> str:
         f"<span class=note>{_e(note)}</span></a></li>"
         for f, label, note in [*DOWNLOADS, (part.script_name, part.script_name, SCRIPT_NOTE)]
     )
-    parts = [c for c in part.summary.get("components", []) if c.get("stl")] if model else []
-    stl = " ".join(f"{prefix}{c['stl']}" for c in parts) or f"{prefix}part.stl"
-    # an assembled model's components, for the viewer's colours and its show/see-through controls
+    parts = [c for c in part.summary.get("components", []) if c.get("meshes")] if model else []
+    meshes = [m for c in parts for m in c["meshes"]]
+    stl = " ".join(f"{prefix}{m['stl']}" for m in meshes) or f"{prefix}part.stl"
+    # an assembled model's components (what was added to it directly), for the
+    # viewer's show/see-through controls, and its meshes' colours and components
     names = f' data-names="{_e(" ".join(c["name"] for c in parts))}"' if parts else ""
-    colors = (f' data-colors="{_e(" ".join(c["color"] for c in parts))}"'
-              if parts and all(c.get("color") for c in parts) else "")
+    colors = (f' data-colors="{_e(" ".join(m["color"] for m in meshes))}"'
+              if meshes and all(m.get("color") for m in meshes) else "")
+    groups = (f' data-groups="{" ".join(str(i) for i, c in enumerate(parts) for _ in c["meshes"])}"'
+              if parts else "")
     description = (
         f"<div class=description><h4>Description</h4>{_paragraphs(part.description)}</div>"
         if part.description else ""
@@ -289,7 +293,7 @@ def _detail(part: Part, base: str, *, model: bool = False) -> str:
     return f"""
 <section class="part{' model' if model else ''}">
   <div class=part-grid>
-    <figure class=viewer data-stl="{_e(stl)}"{names}{colors}>
+    <figure class=viewer data-stl="{_e(stl)}"{names}{colors}{groups}>
       <img src="{prefix}part.png" alt="Shaded view of {_e(part.title)}" class=fallback>
       <figcaption>Drag to orbit · scroll to zoom · <button type=button class=reset>reset view</button></figcaption>
     </figure>
@@ -707,8 +711,6 @@ const HALF_DISC = '<svg width=12 height=12 viewBox="0 0 12 12" aria-hidden=true 
   '<circle cx=6 cy=6 r=5 fill=none stroke=currentColor stroke-width=1.4 />' +
   '<path d="M6 1a5 5 0 0 1 0 10z" fill=currentColor /></svg>';
 
-// one chip per component under the view: a checkbox shows or hides it, the
-// half-disc button makes it see-through; a single part gets the button alone
 // a section view: pick an axis, then slide the cutting plane along it; the
 // part on the far side of the plane is cut away (flip keeps the other side)
 function section(figure, parts, size, renderer) {
@@ -765,10 +767,14 @@ function section(figure, parts, size, renderer) {
   figure.insertBefore(bar, figure.querySelector("figcaption"));
 }
 
-function layers(figure, parts, colors, names) {
+// one chip per component under the view (what the assembly holds directly, so
+// a sub-assembly is one chip for all its meshes): a checkbox shows or hides it,
+// the half-disc button makes it see-through; a single part gets that button alone
+function layers(figure, parts, groups, names) {
   const bar = document.createElement("div");
   bar.className = "layers";
-  parts.forEach(({mesh, edges, material}, i) => {
+  const chips = names ? names.map((_, i) => parts.filter((_, m) => groups[m] === i)) : [parts];
+  chips.forEach((members, i) => {
     const chip = document.createElement("span");
     chip.className = "layer";
     if (names) {
@@ -778,13 +784,19 @@ function layers(figure, parts, colors, names) {
       box.type = "checkbox";
       box.checked = true;
       box.addEventListener("change", () => {
-        mesh.visible = edges.visible = box.checked;
+        members.forEach(({mesh, edges}) => { mesh.visible = edges.visible = box.checked; });
         chip.classList.toggle("hidden", !box.checked);
       });
-      const swatch = document.createElement("span");
-      swatch.className = "swatch";
-      swatch.style.background = "#" + material.color.getHexString();
-      label.append(box, swatch, names[i].split("/").pop());
+      label.append(box);
+      // a swatch per colour inside the component, up to three
+      const hexes = [...new Set(members.map(({material}) => material.color.getHexString()))];
+      hexes.slice(0, 3).forEach((hex) => {
+        const swatch = document.createElement("span");
+        swatch.className = "swatch";
+        swatch.style.background = "#" + hex;
+        label.append(swatch);
+      });
+      label.append(names[i].split("/").pop());
       chip.append(label);
     }
     const ghost = document.createElement("button");
@@ -796,11 +808,13 @@ function layers(figure, parts, colors, names) {
     ghost.addEventListener("click", () => {
       const on = ghost.getAttribute("aria-pressed") !== "true";
       ghost.setAttribute("aria-pressed", String(on));
-      material.transparent = on;
-      material.opacity = on ? SEE_THROUGH : 1;
-      material.depthWrite = !on;  // so parts behind it still draw
-      material.needsUpdate = true;
-      edges.material.opacity = on ? 0.25 : 0.55;
+      members.forEach(({material, edges}) => {
+        material.transparent = on;
+        material.opacity = on ? SEE_THROUGH : 1;
+        material.depthWrite = !on;  // so parts behind it still draw
+        material.needsUpdate = true;
+        edges.material.opacity = on ? 0.25 : 0.55;
+      });
     });
     chip.append(ghost);
     bar.append(chip);
@@ -847,7 +861,8 @@ function mount(figure) {
     figure.insertBefore(renderer.domElement, figure.firstChild);
     figure.classList.add("live");
     section(figure, parts, box.getSize(new THREE.Vector3()), renderer);
-    layers(figure, parts, colors, names && names.length === parts.length ? names : null);
+    const groups = figure.dataset.groups ? figure.dataset.groups.split(" ").map(Number) : null;
+    layers(figure, parts, groups, names && groups && groups.length === parts.length ? names : null);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
