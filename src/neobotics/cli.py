@@ -1,11 +1,11 @@
 """Command line: ``neobotics generate | cad | build | view | site``.
 
     # NL -> CadQuery script -> BREP / STEP / STL / PNG, with Claude
-    neobotics generate --description products/B4/grippers/jaw/description.md --out results/jaw
+    neobotics generate --description products/RA6/grippers/jaw/description.md --out results/jaw
     neobotics generate "a 40 x 40 x 5 mm plate with four M3 holes" --out results/plate
 
     # only the CAD stage, for a script written or edited by hand
-    neobotics cad products/B4/motor_mounts/nema17_bracket/part.py --out results/nema17_bracket
+    neobotics cad tests/fixtures/nema17_bracket/part.py --out results/nema17_bracket
 
     # a shaded PNG of any BREP or STL
     neobotics view results/nema17_bracket/cad/part.stl
