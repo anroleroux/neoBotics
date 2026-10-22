@@ -88,7 +88,7 @@ products/<PRODUCT>/<assembly>/assembly.py                 optional: the assemble
      fit itself (clearance, overlap) in named constants.
 
    Worked examples:
-   - `products/B4/motor_mounts/nema17_bracket/part.py`: a standalone part;
+   - `products/RA6/base/base_plate/part.py`: a standalone part;
    - `products/PB4/chassis/lid/part.py`: a part sized from another with
      `load_part`.
 

@@ -52,11 +52,11 @@ pip install -e ".[dev]"
 export ANTHROPIC_API_KEY=...        # or `ant auth login`
 
 # NL -> B-rep code -> CAD
-neobotics generate --description products/B4/grippers/jaw/description.md --out results/jaw
+neobotics generate --description products/RA6/grippers/jaw/description.md --out results/jaw
 neobotics generate "a 40 x 40 x 5 mm plate with four M3 holes on a 30 mm square" --out results/plate
 
 # only the CAD stage, for a script written or edited by hand (no model, no key)
-neobotics cad products/B4/motor_mounts/nema17_bracket/part.py --out results/nema17_bracket
+neobotics cad tests/fixtures/nema17_bracket/part.py --out results/nema17_bracket
 
 # a shaded PNG of any BREP or STL (--view iso | rear_below)
 neobotics view results/nema17_bracket/cad/part.stl
@@ -85,7 +85,7 @@ Assemblies nest to any depth, and the leaf assemblies hold the parts. Each
 part has its `description.md` and `part.py`. `product.md` and `assembly.md`
 name and describe the levels above.
 
-- **B4** has the assembly **Motor mounts** with the NEMA 17 bracket.
+- **RA6** has the assembly **Base** with the base plate.
 - **PB4** has:
   - the assembly **Chassis**: a base driven by `l`, `b`, `h` and `wall`, and an
     18650 cell. The chassis `assembly.py` lays four cells along x against the
@@ -122,7 +122,8 @@ results/jaw/
 
 ### The part script
 
-`products/B4/motor_mounts/nema17_bracket/` is a hand-written reference: a
+`tests/fixtures/nema17_bracket/` is a hand-written reference (kept with the
+tests, outside the catalogue): a
 NEMA 17 motor bracket with its description next to it. It follows the same contract a generated
 script does:
 
@@ -191,7 +192,7 @@ must be set to deploy from GitHub Actions (Settings → Pages → Source).
 
 To generate a design with Claude in CI, add an `ANTHROPIC_API_KEY` repository
 secret and start the workflow by hand with `design` set to a part path such
-as `B4/grippers/jaw` (see `products/README.md`).
+as `RA6/grippers/jaw` (see `products/README.md`).
 
 ## Safety
 
