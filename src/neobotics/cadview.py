@@ -279,18 +279,26 @@ def render_shape(shape, png_path: Path, title: str | None = None, view: str = "i
 
 
 def render_components(shapes: list, png_path: Path, title: str | None = None,
-                      view: str = "iso") -> Path:
-    """Render an assembly's placed components to PNG, each in its own colour."""
-    points, triangles, colors, offset = [], [], [], 0
+                      view: str = "iso", colors: list[str] | None = None) -> Path:
+    """Render an assembly's placed components to PNG, each in its own colour:
+    ``colors`` (#rrggbb, one per shape) or else COMPONENT_RGB in order."""
+    points, triangles, face_colors, offset = [], [], [], 0
     for i, shape in enumerate(shapes):
         p, t = shape_triangles(shape)
         points.append(p)
         triangles.append(t + offset)
-        colors.append(np.tile(COMPONENT_RGB[i % len(COMPONENT_RGB)], (len(t), 1)))
+        rgb = (_hex_rgb(colors[i]) if colors and i < len(colors)
+               else COMPONENT_RGB[i % len(COMPONENT_RGB)])
+        face_colors.append(np.tile(rgb, (len(t), 1)))
         offset += len(p)
     azimuth, elevation = VIEWS[view]
     return render_triangles(np.vstack(points), np.vstack(triangles), png_path, title=title,
-                            azimuth=azimuth, elevation=elevation, colors=np.vstack(colors))
+                            azimuth=azimuth, elevation=elevation, colors=np.vstack(face_colors))
+
+
+def _hex_rgb(color: str) -> np.ndarray:
+    """#rrggbb as RGB in 0..1."""
+    return np.array([int(color[i:i + 2], 16) / 255 for i in (1, 3, 5)])
 
 
 def render_brep(brep_path: Path, png_path: Path, title: str | None = None, view: str = "iso") -> Path:
