@@ -193,9 +193,9 @@ def test_the_end_strip_spans_three_holders_and_two_rows(tmp_path):
     """The strip: three holders long, twelve countersinks for the M1.2 screws,
     thin enough that a 6 mm screw flush in it reaches 4.5 mm into the holder."""
     strip = _summary(build_part(LIBRARY / "battery_holders/end_strip/part.py", tmp_path / "strip"))
-    # 1.5 mm strip plus the flanges, 3.4 mm out from its front
+    # 1.5 mm strip plus the tabs, 3.4 mm out past its front
     assert strip["bounding_box"]["size"] == pytest.approx([1.5 + 3.4, 3 * 21.0, 10.0])
     assert strip["regions"]["countersinks"]["count"] == 12
-    assert strip["regions"]["flange_countersinks"]["count"] == 4  # two per flange
+    assert strip["regions"]["tab_countersinks"]["count"] == 4  # two per tab
     screw = _summary(build_part(LIBRARY / "fasteners/m1_2x6_countersunk/part.py", tmp_path / "screw"))
     assert screw["bounding_box"]["size"][1:] == pytest.approx([2.3, 6.0])  # head across, length
