@@ -7,12 +7,13 @@ each bottom triangle's threaded hole. The holes are placed from the holder
 body's width and screw positions, and the countersinks sized from the screw,
 both through load_library, so the strip follows a change to either.
 
-Two tabs come off the strip's top edge and turn 90 degrees to stick out
+Two tabs come off the strip's bottom edge and turn 90 degrees to stick out
 forward, like bent sheet-metal ears in plastic: one in line with each of the
 two middle screw clusters (where neighbouring holders meet), each as wide as
 the strip and long enough for an M1.2 countersunk head, with two side by
-side; their countersinks are on the inside of the bend, the tabs'
-undersides.
+side; their countersinks are on the inside of the bend, the tabs' tops.
+Three slotted holes, one in each gap between the screw clusters, save
+material.
 
 Assumptions where the description is silent:
 - 1.5 mm thick: the 6 mm screw, flush in its countersink, then reaches
@@ -23,17 +24,21 @@ Assumptions where the description is silent:
 - 0.05 mm radial clearance round the screw head in the countersink, which
   matches the head (90 degrees, with its short cylindrical edge) so the head
   sits flush; 1.3 mm clearance holes through (ISO 273 fine, M1.2);
-- the tabs are on the top edge (z = width), the strip's thickness thick,
-  their tops flush with the strip's top, running forward from the strip's
-  back; each is the strip's width (10 mm) along y, centred on a joint
+- the tabs are on the bottom edge (z = 0), the strip's thickness thick,
+  their bottoms flush with the strip's bottom, running forward from the
+  strip's back; each is the strip's width (10 mm) along y, centred on a joint
   between neighbouring holders; they stay clear of the countersinks below
   them (0.47 mm) and of the clips' solder lugs, which come out at the
   holders' centres;
 - each tab reaches 3.4 mm out past the strip's front: its holes' centres
   1.7 mm from the strip's front and from the tab's end, so each 2.4 mm
   countersink keeps 0.5 mm of material to both; its two holes are a quarter
-  and three quarters across it; they go down through the tab, along z, and
-  the countersinks open on its underside;
+  and three quarters across it; they go up through the tab, along z, and
+  the countersinks open on its top;
+- the material-saving holes are slots with round ends, 10 mm long and 6 mm
+  tall, centred in the gaps between the clusters (at the holders' centres
+  and the strip's half height): 2 mm of strip above and below each, and
+  about 2.5 mm to the nearest countersink;
 - square corners, no fillets;
 - modelled as it is bolted on: its back on x = 0 against the holders' end
   faces, the countersinks opening on +x, centred across y, standing on z = 0
@@ -57,6 +62,8 @@ length = columns * holder.width  # along y
 joint = width / 2  # the plane where the two rows' bottoms meet
 
 tab_margin = 0.5  # round each tab countersink, to the strip's front and to the tab's end
+saving_slot_length = 10.0  # along y, round ends included
+saving_slot_height = 6.0  # along z
 
 countersink_radius = screw.head_diameter / 2 + head_clearance
 cone_height = countersink_radius - clearance_hole / 2  # 90 degrees: as deep as it narrows
@@ -64,12 +71,13 @@ tab_reach = 2 * (countersink_radius + tab_margin)  # out past the strip's front,
 tab_width = width  # along y
 tab_thickness = thickness  # along z
 tab_ys = [side * holder.width / 2 for side in (1, -1)]  # the middle joints, with three columns
-tab_underside = width - tab_thickness
+tab_top = tab_thickness  # the tabs stand on z = 0; their countersinks open here
 tab_hole_x = thickness + tab_reach / 2
 tab_hole_offsets = [-tab_width / 4, tab_width / 4]  # along y, from each tab's centre
+column_ys = [(c - (columns - 1) / 2) * holder.width for c in range(columns)]
 points = [
     (column_y + side * holder.screw_y, joint + row * holder.screw_inset)
-    for column_y in ((c - (columns - 1) / 2) * holder.width for c in range(columns))
+    for column_y in column_ys
     for side in (1, -1)
     for row in (1, -1)
 ]
@@ -92,15 +100,22 @@ def countersunk_hole(face_point, out, depth):
 
 plate = cq.Workplane("XY").box(thickness, length, width, centered=(False, True, False))
 tabs = [
-    cq.Workplane("XY", origin=(0, y, tab_underside)).box(
+    cq.Workplane("XY", origin=(0, y, 0)).box(
         thickness + tab_reach, tab_width, tab_thickness, centered=(False, True, False))
     for y in tab_ys
 ]
 cuts = [c for y, z in points for c in countersunk_hole((thickness, y, z), (1, 0, 0), thickness)]
-# the tabs' countersinks open on their undersides, inside the bend
+# the tabs' countersinks open on their tops, inside the bend
 cuts += [c for y in tab_ys for dy in tab_hole_offsets
-         for c in countersunk_hole((tab_hole_x, y + dy, tab_underside), (0, 0, -1), tab_thickness)]
-result = plate
+         for c in countersunk_hole((tab_hole_x, y + dy, tab_top), (0, 0, 1), tab_thickness)]
+# the material-saving slots, in the gaps between the clusters: at the holders' centres
+saving_slots = (
+    cq.Workplane("YZ")
+    .pushPoints([(y, width / 2) for y in column_ys])
+    .slot2D(saving_slot_length, saving_slot_height)
+    .extrude(thickness)
+)
+result = plate.cut(saving_slots)
 for tab in tabs:
     result = result.union(tab)
 for cut in cuts:
@@ -112,7 +127,7 @@ regions = {
         lambda f: abs(f.Center().x - thickness) < 1e-6),
     "countersinks": result.faces("%CONE").filter(  # into the holders, along x
         lambda f: f.BoundingBox().xlen < thickness and f.BoundingBox().zlen > thickness),
-    "tab_countersinks": result.faces("%CONE").filter(  # on the tabs' undersides
+    "tab_countersinks": result.faces("%CONE").filter(  # on the tabs' tops
         lambda f: f.BoundingBox().zlen < tab_thickness),
 }
 

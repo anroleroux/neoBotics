@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import pytest
@@ -197,5 +198,23 @@ def test_the_end_strip_spans_three_holders_and_two_rows(tmp_path):
     assert strip["bounding_box"]["size"] == pytest.approx([1.5 + 3.4, 3 * 21.0, 10.0])
     assert strip["regions"]["countersinks"]["count"] == 12
     assert strip["regions"]["tab_countersinks"]["count"] == 4  # two per tab
+    # three material-saving slots, 10 x 6 mm with round ends, through the 1.5 mm strip
+    full = 1.5 * 3 * 21.0 * 10.0 + 2 * 3.4 * 10.0 * 1.5
+    assert strip["volume_mm3"] < full - 3 * (4 * 6 + math.pi * 9) * 1.5
     screw = _summary(build_part(LIBRARY / "fasteners/m1_2x6_countersunk/part.py", tmp_path / "screw"))
     assert screw["bounding_box"]["size"][1:] == pytest.approx([2.3, 6.0])  # head across, length
+
+
+
+def test_the_pack_joins_six_holders_with_two_strips(tmp_path):
+    """Six holders in two rows of three, a strip and twelve screws at each end:
+    the only overlaps are the 24 screws forming their threads in the holders."""
+    summary = _summary(build_part(LIBRARY / "battery_holders/pack_3x2/assembly.py", tmp_path / "out"))
+    names = [c["name"] for c in summary["components"]]
+    assert sum("upper_" in n or "lower_" in n for n in names) == 6
+    assert sum("strip_" in n for n in names) == 2
+    assert sum("screw_" in n for n in names) == 24
+    assert summary["bounding_box"]["size"][1:] == pytest.approx([63.0, 40.0])
+    clashes = summary["interference"]
+    assert len(clashes) == 24
+    assert all("screw_" in c["b"] and ("upper_" in c["a"] or "lower_" in c["a"]) for c in clashes)
