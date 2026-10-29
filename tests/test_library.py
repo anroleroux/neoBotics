@@ -157,7 +157,14 @@ def test_the_single_18650_holder_cradles_its_cell(tmp_path):
     summary = _summary(build_part(LIBRARY / "battery_holders/single_18650_holder/assembly.py",
                                   tmp_path / "out"))
     assert summary["interference"] == []
-    body, cell = summary["components"]
+    body, cell, positive, negative = summary["components"]
+    # a clip at each end, from the library, its spring leaf just off the cell's end
+    assert [positive["name"], negative["name"]] == [
+        "single_18650_holder/clip_positive", "single_18650_holder/clip_negative"]
+    assert positive["bounding_box_min"][0] == pytest.approx(32.7)
+    assert negative["bounding_box_max"][0] == pytest.approx(-32.7)
+    assert positive["bounding_box_max"][2] < body["bounding_box_max"][2]  # below the rim
+    assert {c["b"] for c in summary["contacts"]} == {positive["name"], negative["name"]}
     assert cell["name"].endswith("/battery")
     assert [cell["bounding_box_max"][i] - cell["bounding_box_min"][i] for i in range(3)] == \
         pytest.approx([65.0, 18.4, 18.4])
