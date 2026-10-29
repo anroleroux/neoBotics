@@ -187,3 +187,13 @@ def test_the_single_18650_holder_takes_m12_screws_in_its_triangles(tmp_path):
     foot = math.sqrt(2) * (18.4 / 2 + 0.1 + 1.0) - (1.0 + 18.4 / 2 + 0.1)  # the 45 face meets z = 0
     inset = (width / 2 - foot) * (2 - math.sqrt(2)) / 2  # the triangle's inradius
     assert inset - 2.3 / 2 == pytest.approx(0.676, abs=1e-3)  # head clear of side and bottom
+
+
+def test_the_end_strip_spans_three_holders_and_two_rows(tmp_path):
+    """The strip: three holders long, twelve countersinks for the M1.2 screws,
+    thin enough that a 6 mm screw flush in it reaches 4.5 mm into the holder."""
+    strip = _summary(build_part(LIBRARY / "battery_holders/end_strip/part.py", tmp_path / "strip"))
+    assert strip["bounding_box"]["size"] == pytest.approx([1.5, 3 * 21.0, 10.0])
+    assert strip["regions"]["countersinks"]["count"] == 12
+    screw = _summary(build_part(LIBRARY / "fasteners/m1_2x6_countersunk/part.py", tmp_path / "screw"))
+    assert screw["bounding_box"]["size"][1:] == pytest.approx([2.3, 6.0])  # head across, length
