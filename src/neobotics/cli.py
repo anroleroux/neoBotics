@@ -12,6 +12,8 @@
 
     # build one catalogue part by its designation: product/assembly/.../part
     neobotics build PB4/chassis/lid
+    # or a reusable one in the parts library: library/category/item/...
+    neobotics build library/battery_holders/holder_18650
 
     # build every part under products/ and render the catalogue site
     # (what GitHub Pages serves)
@@ -63,9 +65,12 @@ def main(argv: list[str] | None = None) -> int:
 
     p_build = sub.add_parser("build", help="build one catalogue part by its designation, "
                                            "e.g. PB4/chassis/lid")
-    p_build.add_argument("designation", help="<product>/<assembly>/.../<part>")
+    p_build.add_argument("designation", help="<product>/<assembly>/.../<part>, or "
+                                             "library/<category>/<item>/...")
     p_build.add_argument("--root", type=Path, default=Path("products"),
                          help="the catalogue (default: products)")
+    p_build.add_argument("--library", type=Path, default=None,
+                         help="the parts library (default: library/ beside the catalogue)")
     p_build.add_argument("--out", type=Path, default=Path("results"),
                          help="where parts are built; this one goes to <out>/<designation> "
                               "(default: results)")
@@ -77,6 +82,8 @@ def main(argv: list[str] | None = None) -> int:
     p_site.add_argument("--out", type=Path, default=Path("results"),
                         help="where the parts are built (default: results)")
     p_site.add_argument("--site", type=Path, default=Path("site"))
+    p_site.add_argument("--library", type=Path, default=None,
+                        help="the parts library (default: library/ beside the catalogue)")
 
     args = parser.parse_args(argv)
 
@@ -85,15 +92,15 @@ def main(argv: list[str] | None = None) -> int:
         from .pipeline import run_script
 
         try:
-            entry = find(args.root, args.designation)
+            entry = find(args.root, args.designation, args.library)
         except (OSError, KeyError, ValueError) as exc:
             parser.error(f"build: {exc}")
         out = entry.out_dir(args.out)
         result = run_script(entry.script, out)
         if not result.ok:
-            print(f"error: {entry.designation}: {result.error}", file=sys.stderr)
+            print(f"error: {entry.address}: {result.error}", file=sys.stderr)
             return 1
-        print(f"built {entry.designation}")
+        print(f"built {entry.address}")
         _print_build(out, result.summary, result.files)
         return 0
 
@@ -101,6 +108,8 @@ def main(argv: list[str] | None = None) -> int:
         from .catalog import main as catalog_main
 
         rest = [str(args.root), "--out", str(args.out), "--site", str(args.site)]
+        if args.library:
+            rest += ["--library", str(args.library)]
         return catalog_main(rest)
 
     if args.command == "generate":
