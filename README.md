@@ -200,6 +200,10 @@ On a push, it also deploys the site to GitHub Pages:
   section slider and make see-through, the
   description, measurements, and STEP / STL / BREP / script downloads.
 
+Every 3D view draws coordinate crosshairs through the model's origin: x red,
+y green, z blue, dashed on the negative side. The "axes" button in the
+caption hides them.
+
 Every page leads back up through a breadcrumb and a "Back to …" link. Links are
 relative, so the site also works opened from a local folder. Pages
 must be set to deploy from GitHub Actions (Settings → Pages → Source).

@@ -644,6 +644,7 @@ aspect-ratio:2/3;max-height:calc(100vh - 32px);display:flex;flex-direction:colum
 .viewer.live .fallback{display:none}
 .viewer figcaption{font-size:.8rem;color:var(--muted);padding:6px 10px;border-top:1px solid var(--line)}
 .viewer button{font:inherit;color:var(--accent);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline}
+.viewer figcaption .axes[aria-pressed=false]{color:var(--muted);text-decoration:line-through}
 .viewer .section{display:flex;align-items:center;gap:6px;padding:6px 10px;border-top:1px solid var(--line);
 font-size:.8rem;color:var(--muted)}
 .viewer .section .axis{text-decoration:none;padding:1px 6px;border:1px solid var(--line);border-radius:4px}
@@ -804,6 +805,63 @@ const HALF_DISC = '<svg width=12 height=12 viewBox="0 0 12 12" aria-hidden=true 
   '<circle cx=6 cy=6 r=5 fill=none stroke=currentColor stroke-width=1.4 />' +
   '<path d="M6 1a5 5 0 0 1 0 10z" fill=currentColor /></svg>';
 
+// coordinate crosshairs: a line along each axis through the model's origin
+// (x red, y green, z blue), solid on the positive side and dashed on the
+// negative, past the model by a margin, each lettered at its positive end; drawn
+// over the model so they show through it.  The model was moved by -centre.
+const AXIS_COLORS = {x: 0xd64545, y: 0x3e9c4f, z: 0x3d6fd6};
+function crosshairs(box, centre, radius) {
+  const group = new THREE.Group();
+  const margin = radius * 0.15;
+  const dirs = {x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1)};
+  const origin = centre.clone().negate();  // the model's (0, 0, 0) in the scene
+  const line = (from, to, material) => {
+    const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([from, to]), material);
+    l.computeLineDistances();
+    l.renderOrder = 10;
+    return l;
+  };
+  for (const [axis, dir] of Object.entries(dirs)) {
+    const color = AXIS_COLORS[axis];
+    const lo = Math.min(box.min[axis], 0) - margin, hi = Math.max(box.max[axis], 0) + margin;
+    const at = (v) => origin.clone().addScaledVector(dir, v);
+    const style = {color, depthTest: false, transparent: true, opacity: 0.9};
+    group.add(line(at(0), at(hi), new THREE.LineBasicMaterial(style)));
+    group.add(line(at(lo), at(0), new THREE.LineDashedMaterial(
+      {...style, opacity: 0.6, dashSize: radius * 0.04, gapSize: radius * 0.03})));
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 64;
+    const ctx = canvas.getContext("2d");
+    ctx.font = "bold 44px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#" + color.toString(16).padStart(6, "0");
+    ctx.fillText(axis, 32, 34);
+    const label = new THREE.Sprite(new THREE.SpriteMaterial(
+      {map: new THREE.CanvasTexture(canvas), depthTest: false, transparent: true}));
+    label.position.copy(at(hi + margin * 0.35));
+    label.scale.setScalar(radius * 0.09);
+    label.renderOrder = 11;
+    group.add(label);
+  }
+  return group;
+}
+
+// a toggle for the crosshairs, after "reset view" in the caption
+function axesToggle(figure, group) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "axes";
+  button.textContent = "axes";
+  button.title = "show or hide the coordinate crosshairs";
+  button.setAttribute("aria-pressed", "true");
+  button.addEventListener("click", () => {
+    group.visible = !group.visible;
+    button.setAttribute("aria-pressed", String(group.visible));
+  });
+  figure.querySelector("figcaption").append(" · ", button);
+}
+
 // a section view: pick an axis, then slide the cutting plane along it; the
 // part on the far side of the plane is cut away (flip keeps the other side)
 function section(figure, parts, size, renderer) {
@@ -940,6 +998,8 @@ function mount(figure) {
       return {mesh, edges, material};
     });
     const materials = parts.map((p) => p.material);
+    const axes = crosshairs(box, centre, radius);
+    scene.add(axes);
     scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.4));
     const sun = new THREE.DirectionalLight(0xffffff, 1.6);
     sun.position.set(1, -1.4, 2);
@@ -953,6 +1013,7 @@ function mount(figure) {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     figure.insertBefore(renderer.domElement, figure.firstChild);
     figure.classList.add("live");
+    axesToggle(figure, axes);
     section(figure, parts, box.getSize(new THREE.Vector3()), renderer);
     const groups = figure.dataset.groups ? figure.dataset.groups.split(" ").map(Number) : null;
     layers(figure, parts, groups, names && groups && groups.length === parts.length ? names : null);

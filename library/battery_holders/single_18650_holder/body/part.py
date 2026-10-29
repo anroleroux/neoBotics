@@ -4,11 +4,13 @@ A plastic frame for one 18650 cell: a hollow rectangular prism, open at the
 top and the bottom, with walls wall thick (1 mm by default). Two ribs across
 the inside, spaced along the cell's length, each have a semicircular cradle
 the cell lies in. Change wall and the outside grows with it; the cavity keeps
-the cell's size.
+the cell's size, which comes from the battery part, so the body follows a
+change to the cell.
 
 Assumptions where the description is silent:
-- the cavity is sized for one 18650 lying along x: the cell is 18.4 mm across
-  and 65.0 mm long, with 0.5 mm clearance at each end and 0.3 mm each side;
+- the cavity is sized for the battery part (an 18650, 18.4 mm across and
+  65.0 mm long) lying along x, with 0.5 mm clearance at each end and 0.3 mm
+  each side;
 - the walls are 20 mm tall (as before, when the body had a floor), so the cell
   sits about flush with the rim;
 - each rib is 2 mm thick along x, spans the inside wall to wall, and runs from
@@ -21,10 +23,12 @@ Assumptions where the description is silent:
 """
 import cadquery as cq
 
+cell = load_part("../battery")  # the cell this body holds: diameter, length
+
 # parameters, in mm
 wall = 1.0  # side and end walls
-cell_diameter = 18.4
-cell_length = 65.0
+cell_diameter = cell.diameter
+cell_length = cell.length
 end_clearance = 0.5  # at each end, along x
 side_clearance = 0.3  # each side, across y
 height = 20.0  # overall: the walls
@@ -66,5 +70,5 @@ regions = {
     "cradles": result.faces("%CYLINDER"),  # where the cell lies
 }
 
-if "show_object" in globals():  # CQ-editor
+if "show_object" in globals():  # CQ-editor (load_part runs under neobotics only)
     show_object(result, name="part")

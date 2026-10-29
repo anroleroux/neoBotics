@@ -217,3 +217,11 @@ def test_site_refuses_empty_catalogues_and_duplicate_slugs(tmp_path):
     twice = Product("B4", "B4", assemblies=[Assembly("mounts", "Mounts", parts=[part, part])])
     with pytest.raises(ValueError, match="unique"):
         build_site([twice], tmp_path / "site")
+
+
+def test_viewers_draw_coordinate_crosshairs(catalogue):
+    """Every 3D view draws the x, y and z axes through the model's origin, with
+    a caption button that hides them."""
+    page = _page(catalogue, "Z9", "cover")
+    assert "function crosshairs(" in page and "scene.add(axes)" in page
+    assert "axesToggle(figure, axes)" in page

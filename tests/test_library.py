@@ -149,3 +149,19 @@ def test_the_18650_holder_takes_a_terminal_at_each_end(tmp_path):
     # their feet stand on the holder's floor, their tabs above its top
     assert negative["bounding_box_min"][2] == pytest.approx(1.5)
     assert negative["bounding_box_max"][2] > summary["components"][0]["bounding_box_max"][2]
+
+
+def test_the_single_18650_holder_cradles_its_cell(tmp_path):
+    """The cell lies along x in the body's two rib cradles, inside the open
+    frame, clear of every wall."""
+    summary = _summary(build_part(LIBRARY / "battery_holders/single_18650_holder/assembly.py",
+                                  tmp_path / "out"))
+    assert summary["interference"] == []
+    body, cell = summary["components"]
+    assert cell["name"].endswith("/battery")
+    assert [cell["bounding_box_max"][i] - cell["bounding_box_min"][i] for i in range(3)] == \
+        pytest.approx([65.0, 18.4, 18.4])
+    assert cell["bounding_box_min"][2] == pytest.approx(1.0)  # on the cradles' bottoms
+    for i in range(3):  # inside the body
+        assert body["bounding_box_min"][i] <= cell["bounding_box_min"][i]
+        assert cell["bounding_box_max"][i] <= body["bounding_box_max"][i]
