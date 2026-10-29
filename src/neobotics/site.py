@@ -145,7 +145,7 @@ def read_part(run_dir: Path, name: str | None = None) -> Part:
 
 
 def _published(part: Part) -> list[str]:
-    components = [c["stl"] for c in part.summary.get("components", []) if c.get("stl")]
+    components = [m["stl"] for c in part.summary.get("components", []) for m in c.get("meshes", [])]
     return [f for f, *_ in DOWNLOADS] + [part.script_name] + IMAGES + components
 
 
@@ -295,8 +295,16 @@ def _detail(part: Part, base: str, *, model: bool = False) -> str:
         f"<span class=note>{_e(note)}</span></a></li>"
         for f, label, note in [*DOWNLOADS, (part.script_name, part.script_name, SCRIPT_NOTE)]
     )
-    stls = [c["stl"] for c in part.summary.get("components", []) if c.get("stl")] if model else []
-    stl = " ".join(f"{prefix}{f}" for f in stls) or f"{prefix}part.stl"
+    parts = [c for c in part.summary.get("components", []) if c.get("meshes")] if model else []
+    meshes = [m for c in parts for m in c["meshes"]]
+    stl = " ".join(f"{prefix}{m['stl']}" for m in meshes) or f"{prefix}part.stl"
+    # an assembled model's components (what was added to it directly), for the
+    # viewer's show/see-through controls, and its meshes' colours and components
+    names = f' data-names="{_e(" ".join(c["name"] for c in parts))}"' if parts else ""
+    colors = (f' data-colors="{_e(" ".join(m["color"] for m in meshes))}"'
+              if meshes and all(m.get("color") for m in meshes) else "")
+    groups = (f' data-groups="{" ".join(str(i) for i, c in enumerate(parts) for _ in c["meshes"])}"'
+              if parts else "")
     description = (
         f"<div class=description><h4>Description</h4>{_paragraphs(part.description)}</div>"
         if part.description else ""
@@ -305,7 +313,7 @@ def _detail(part: Part, base: str, *, model: bool = False) -> str:
     return f"""
 <section class="part{' model' if model else ''}">
   <div class=part-grid>
-    <figure class=viewer data-stl="{_e(stl)}">
+    <figure class=viewer data-stl="{_e(stl)}"{names}{colors}{groups}>
       <img src="{prefix}part.png" alt="Shaded view of {_e(part.title)}" class=fallback>
       <figcaption>Drag to orbit · scroll to zoom · <button type=button class=reset>reset view</button></figcaption>
     </figure>
@@ -629,13 +637,30 @@ background:var(--bg);min-width:150px;position:relative}
 .part-grid{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:20px}
 @media (max-width:820px){.part-grid{grid-template-columns:1fr}}
 .viewer{margin:0;align-self:start;background:var(--viewer);border-radius:10px;overflow:hidden;position:relative;
-aspect-ratio:4/3;display:flex;flex-direction:column}
+aspect-ratio:2/3;max-height:calc(100vh - 32px);display:flex;flex-direction:column}
 .viewer canvas{display:block;width:100%;flex:1;min-height:0;touch-action:none;cursor:grab}
 .viewer canvas:active{cursor:grabbing}
 .viewer .fallback{width:100%;flex:1;min-height:0;object-fit:contain}
 .viewer.live .fallback{display:none}
 .viewer figcaption{font-size:.8rem;color:var(--muted);padding:6px 10px;border-top:1px solid var(--line)}
 .viewer button{font:inherit;color:var(--accent);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline}
+.viewer .section{display:flex;align-items:center;gap:6px;padding:6px 10px;border-top:1px solid var(--line);
+font-size:.8rem;color:var(--muted)}
+.viewer .section .axis{text-decoration:none;padding:1px 6px;border:1px solid var(--line);border-radius:4px}
+.viewer .section .axis[aria-pressed=true]{background:var(--code-bg);border-color:var(--accent)}
+.viewer .section input[type=range]{flex:1;min-width:60px;accent-color:var(--accent)}
+.viewer .section input[type=range]:disabled{opacity:.4}
+.viewer .section .flip{text-decoration:none}
+.viewer .layers{display:flex;flex-wrap:wrap;gap:4px 6px;padding:6px 10px;border-top:1px solid var(--line);
+font-size:.8rem;max-height:30%;overflow:auto}
+.viewer .layer{display:inline-flex;align-items:center;gap:5px;padding:2px 4px 2px 6px;border:1px solid var(--line);
+border-radius:6px}
+.viewer .layer label{display:inline-flex;align-items:center;gap:5px;cursor:pointer}
+.viewer .layer input{margin:0}
+.viewer .swatch{width:10px;height:10px;border-radius:2px;flex:none}
+.viewer .layer.hidden label{color:var(--muted);text-decoration:line-through}
+.viewer .layer .ghost{text-decoration:none;padding:0 3px;border-radius:4px;color:var(--muted)}
+.viewer .layer .ghost[aria-pressed=true]{color:var(--accent);background:var(--code-bg)}
 .facts h3,.description h3{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 6px}
 .description{margin-bottom:16px}.description p{margin:0 0 .6em}
 table{border-collapse:collapse;width:100%;margin-bottom:16px;font-size:.92rem}
@@ -770,9 +795,125 @@ import {OrbitControls} from "three/addons/controls/OrbitControls.js";
 
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
-// an assembly's components, in order, match the PNG views (cadview.COMPONENT_RGB);
+// an assembly's components take the colours its PNG views use (data-colors, from
+// the build summary), falling back to this palette (cadview.COMPONENT_RGB);
 // a single part uses the page's --part colour
 const COMPONENT_COLORS = [0x5b8fc7, 0xe08f3d, 0x66ad73, 0x9e7ac7, 0xcc6673, 0x73b3b8];
+const SEE_THROUGH = 0.22;  // a see-through component's opacity
+const HALF_DISC = '<svg width=12 height=12 viewBox="0 0 12 12" aria-hidden=true style="vertical-align:-1px">' +
+  '<circle cx=6 cy=6 r=5 fill=none stroke=currentColor stroke-width=1.4 />' +
+  '<path d="M6 1a5 5 0 0 1 0 10z" fill=currentColor /></svg>';
+
+// a section view: pick an axis, then slide the cutting plane along it; the
+// part on the far side of the plane is cut away (flip keeps the other side)
+function section(figure, parts, size, renderer) {
+  const AXES = {x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1)};
+  const plane = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0);
+  let axis = null, flipped = false;
+  const bar = document.createElement("div");
+  bar.className = "section";
+  bar.append("Section");
+  const slider = document.createElement("input");
+  slider.type = "range";
+  slider.disabled = true;
+  slider.setAttribute("aria-label", "section position");
+  const flip = document.createElement("button");
+  flip.type = "button";
+  flip.className = "flip";
+  flip.textContent = "flip";
+  flip.disabled = true;
+  const update = () => {
+    const v = Number(slider.value);
+    plane.normal.copy(AXES[axis]).multiplyScalar(flipped ? 1 : -1);
+    plane.constant = flipped ? -v : v;
+  };
+  const buttons = ["off", "x", "y", "z"].map((name) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "axis";
+    b.textContent = name;
+    b.setAttribute("aria-pressed", String(name === "off"));
+    b.addEventListener("click", () => {
+      axis = name === "off" ? null : name;
+      buttons.forEach((o) => o.setAttribute("aria-pressed", String(o === b)));
+      slider.disabled = flip.disabled = !axis;
+      parts.forEach(({material, edges}) => {
+        material.clippingPlanes = edges.material.clippingPlanes = axis ? [plane] : [];
+        material.side = axis ? THREE.DoubleSide : THREE.FrontSide;  // see inside the cut
+        material.needsUpdate = edges.material.needsUpdate = true;
+      });
+      if (axis) {
+        const half = size[axis] / 2;
+        slider.min = -half;
+        slider.max = half;
+        slider.step = size[axis] / 400;
+        slider.value = 0;  // start halfway through the model
+        update();
+      }
+    });
+    return b;
+  });
+  slider.addEventListener("input", update);
+  flip.addEventListener("click", () => { flipped = !flipped; update(); });
+  bar.append(...buttons, slider, flip);
+  renderer.localClippingEnabled = true;
+  figure.insertBefore(bar, figure.querySelector("figcaption"));
+}
+
+// one chip per component under the view (what the assembly holds directly, so
+// a sub-assembly is one chip for all its meshes): a checkbox shows or hides it,
+// the half-disc button makes it see-through; a single part gets that button alone
+function layers(figure, parts, groups, names) {
+  const bar = document.createElement("div");
+  bar.className = "layers";
+  const chips = names ? names.map((_, i) => parts.filter((_, m) => groups[m] === i)) : [parts];
+  chips.forEach((members, i) => {
+    const chip = document.createElement("span");
+    chip.className = "layer";
+    if (names) {
+      const label = document.createElement("label");
+      label.title = names[i];
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = true;
+      box.addEventListener("change", () => {
+        members.forEach(({mesh, edges}) => { mesh.visible = edges.visible = box.checked; });
+        chip.classList.toggle("hidden", !box.checked);
+      });
+      label.append(box);
+      // a swatch per colour inside the component, up to three
+      const hexes = [...new Set(members.map(({material}) => material.color.getHexString()))];
+      hexes.slice(0, 3).forEach((hex) => {
+        const swatch = document.createElement("span");
+        swatch.className = "swatch";
+        swatch.style.background = "#" + hex;
+        label.append(swatch);
+      });
+      label.append(names[i].split("/").pop());
+      chip.append(label);
+    }
+    const ghost = document.createElement("button");
+    ghost.type = "button";
+    ghost.className = "ghost";
+    ghost.innerHTML = HALF_DISC + (names ? "" : " see-through");
+    ghost.title = "see-through";
+    ghost.setAttribute("aria-pressed", "false");
+    ghost.addEventListener("click", () => {
+      const on = ghost.getAttribute("aria-pressed") !== "true";
+      ghost.setAttribute("aria-pressed", String(on));
+      members.forEach(({material, edges}) => {
+        material.transparent = on;
+        material.opacity = on ? SEE_THROUGH : 1;
+        material.depthWrite = !on;  // so parts behind it still draw
+        material.needsUpdate = true;
+        edges.material.opacity = on ? 0.25 : 0.55;
+      });
+    });
+    chip.append(ghost);
+    bar.append(chip);
+  });
+  figure.insertBefore(bar, figure.querySelector("figcaption"));
+}
 
 function mount(figure) {
   const loader = new STLLoader();
@@ -784,16 +925,21 @@ function mount(figure) {
     const radius = box.getSize(new THREE.Vector3()).length() / 2;
 
     const scene = new THREE.Scene();
-    const materials = geometries.map((geometry, i) => {
+    const colors = figure.dataset.colors ? figure.dataset.colors.split(" ") : null;
+    const names = figure.dataset.names ? figure.dataset.names.split(" ") : null;
+    const parts = geometries.map((geometry, i) => {
       geometry.translate(-centre.x, -centre.y, -centre.z);
       geometry.computeVertexNormals();
-      const color = geometries.length > 1 ? COMPONENT_COLORS[i % COMPONENT_COLORS.length] : css("--part");
+      const color = geometries.length === 1 ? css("--part")
+        : colors ? colors[i] : COMPONENT_COLORS[i % COMPONENT_COLORS.length];
       const material = new THREE.MeshStandardMaterial({color, metalness: 0.15, roughness: 0.55});
       const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry, 30),
         new THREE.LineBasicMaterial({color: 0x1a2330, transparent: true, opacity: 0.55}));
-      scene.add(new THREE.Mesh(geometry, material), edges);
-      return material;
+      const mesh = new THREE.Mesh(geometry, material);
+      scene.add(mesh, edges);
+      return {mesh, edges, material};
     });
+    const materials = parts.map((p) => p.material);
     scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.4));
     const sun = new THREE.DirectionalLight(0xffffff, 1.6);
     sun.position.set(1, -1.4, 2);
@@ -807,6 +953,9 @@ function mount(figure) {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     figure.insertBefore(renderer.domElement, figure.firstChild);
     figure.classList.add("live");
+    section(figure, parts, box.getSize(new THREE.Vector3()), renderer);
+    const groups = figure.dataset.groups ? figure.dataset.groups.split(" ").map(Number) : null;
+    layers(figure, parts, groups, names && groups && groups.length === parts.length ? names : null);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;

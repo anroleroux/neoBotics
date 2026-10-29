@@ -112,7 +112,7 @@ library/<category>/<assembly>/<part>/...          its parts
      fit itself (clearance, overlap) in named constants.
 
    Worked examples:
-   - `products/B4/motor_mounts/nema17_bracket/part.py`: a standalone part;
+   - `products/RA6/base/base_plate/part.py`: a standalone part;
    - `products/PB4/chassis/lid/part.py`: a part sized from another with
      `load_part`.
 
@@ -132,11 +132,14 @@ library/<category>/<assembly>/<part>/...          its parts
    - **Place them:** `result = cq.Assembly(name=...)`, with `.add(part.result,
      name=..., loc=cq.Location((x, y, z)))` for each part. Derive every offset
      from the parts' own variables (`base.h - lid.lip_depth`), never from
-     copied numbers. Give each part a `color`. Set `regions = {}`.
+     copied numbers. Give each part a `color`: the PNGs and the 3D viewer
+     use it (a component without one gets a palette colour). Set `regions = {}`.
    - **Build:** `neobotics build <PRODUCT>/<assembly>`. The summary lists:
-     - **components**, by name, with volume and bounding box;
-     - **interference**: pairs that share volume. It must be empty unless an
-       overlap is intended;
+     - **components**: what the assembly holds directly (a part, or a whole
+       sub-assembly as one), by name, with volume, bounding box and the
+       meshes (STL and colour) of every shape inside;
+     - **interference**: pairs of components that share volume. It must be
+       empty unless an overlap is intended;
      - **contacts**: pairs touching over an area, in mm². A seated lid shows
        its rim area.
    - **Check:** fix any interference or missing contact, then look at both

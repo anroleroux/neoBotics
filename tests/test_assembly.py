@@ -100,8 +100,9 @@ def test_catalog_finds_assembly_models(tmp_path):
 
 
 def test_the_pb4_chassis_carries_four_cells_against_the_back_wall(tmp_path):
-    """The real chassis: four 18650 cells on the floor, pointing along x, each
-    with its negative end against the back (-x) wall, none overlapping."""
+    """The real chassis: four 18650 cells on the floor, along x, each against the
+    back (-x) wall, none overlapping; the two at -y are turned round, so they
+    touch that wall with their positive buttons, not their negative ends."""
     summary = _summary(build_part(CHASSIS / "assembly.py", tmp_path / "out"))
     base = _summary(build_part(CHASSIS / "base" / "part.py", tmp_path / "base"))
     assert summary["interference"] == []
@@ -112,8 +113,69 @@ def test_the_pb4_chassis_carries_four_cells_against_the_back_wall(tmp_path):
         assert cell["bounding_box_min"][0] == pytest.approx(-l / 2 + wall)  # against the back wall
         assert cell["bounding_box_max"][0] - cell["bounding_box_min"][0] == pytest.approx(65.0)
         assert cell["bounding_box_min"][2] == pytest.approx(wall)  # on the floor
-    # each cell touches the base over exactly its negative end
-    assert [c["area_mm2"] for c in summary["contacts"]] == pytest.approx([math.pi * 9.2 ** 2] * 4)
+    # battery_1 and battery_2 touch the base over their 7 mm buttons, the others
+    # over their negative ends; all are the same faded pink
+    cell_contacts = [c for c in summary["contacts"] if "battery" in c["b"]]
+    assert [c["area_mm2"] for c in cell_contacts] == pytest.approx(
+        [math.pi * 3.5 ** 2] * 2 + [math.pi * 9.2 ** 2] * 2)
+    assert {c["meshes"][0]["color"] for c in cells} == {"#edbac9"}
+
+
+def test_the_pb4_chargers_sit_behind_their_plug_holes(tmp_path):
+    """The two IP6505 boards and the CN3302 board stand on the floor with their
+    USB mouths against the inside of the front wall, each behind its own plug hole."""
+    summary = _summary(build_part(CHASSIS / "assembly.py", tmp_path / "out"))
+    base = _summary(build_part(CHASSIS / "base" / "part.py", tmp_path / "base"))
+    l, wall = base["bounding_box"]["size"][0], 3.0
+    for name in ("ip6505_charger_1", "ip6505_charger_2", "cn3302_charger"):
+        (board,) = [c for c in summary["components"] if c["name"].endswith(name)]
+        assert board["bounding_box_max"][0] == pytest.approx(l / 2 - wall)
+        assert board["bounding_box_min"][2] == pytest.approx(wall)
+    assert base["regions"]["plug_holes"]["count"] == 8
+    assert base["regions"]["usbc_hole"]["count"] == 4
+    assert summary["interference"] == []
+
+
+def test_the_pb4_bms_stands_against_the_mini_wall(tmp_path):
+    """The 2S BMS stands on edge on the floor, its back on the front mini wall's
+    front face, its length across the breadth and its parts facing the front."""
+    summary = _summary(build_part(CHASSIS / "assembly.py", tmp_path / "out"))
+    (bms,) = [c for c in summary["components"] if c["name"].endswith("bms_2s")]
+    lo, hi = bms["bounding_box_min"], bms["bounding_box_max"]
+    mini_wall_front = -60.0 + 3.0 + 65.0 + 1.0 + 2.0  # back wall inside, a cell, the gap, the wall
+    assert lo[0] == pytest.approx(mini_wall_front) and hi[0] - lo[0] == pytest.approx(2.6)
+    assert hi[1] - lo[1] == pytest.approx(38.0) and hi[2] - lo[2] == pytest.approx(8.0)
+    assert lo[2] == pytest.approx(3.0)  # on the floor
+    (touch,) = [c for c in summary["contacts"] if c["b"].endswith("bms_2s")]
+    # its back on the wall, and the 1 mm board's edge on the floor
+    assert touch["area_mm2"] == pytest.approx(38.0 * 8.0 + 38.0 * 1.0)
+
+
+def test_components_keep_the_colour_they_were_added_with(tmp_path):
+    """A component added with a colour keeps it, in the summary, the PNG views
+    and the site's viewer; one without falls back to the palette."""
+    root = _tree(tmp_path / "products")
+    script = root / "P1" / "stack" / "assembly.py"
+    script.write_text(script.read_text().replace(
+        'name="slab",', 'name="slab", color=cq.Color(1, 0, 0),'))
+    summary = _summary(build_part(script, tmp_path / "out"))
+    assert [c["meshes"][0]["color"] for c in summary["components"]] == ["#5c8fc7", "#ff0000"]
+    _, failures = build_catalog(root, tmp_path / "results", tmp_path / "site", log=lambda _: None)
+    assert not failures
+    page = (tmp_path / "site/products/P1/stack/index.html").read_text()
+    assert 'data-names="stack/box stack/slab" data-colors="#5c8fc7 #ff0000" data-groups="0 1"' in page
+
+
+def test_the_product_model_lists_only_what_it_holds_directly(tmp_path):
+    """PB4's model holds the chassis (a sub-assembly) and the lid: those are its
+    two components, the chassis one for all its parts; every part is still
+    drawn, in its own mesh and colour, inside the chassis."""
+    summary = _summary(build_part(PRODUCTS / "PB4" / "assembly.py", tmp_path / "out"))
+    assert [c["name"] for c in summary["components"]] == ["PB4/chassis", "PB4/lid"]
+    chassis, lid = summary["components"]
+    assert "PB4/chassis/bms_2s" in [m["name"] for m in chassis["meshes"]]
+    assert len(chassis["meshes"]) > 1 and len(lid["meshes"]) == 1
+    assert all(c["a"] == "PB4/chassis" and c["b"] == "PB4/lid" for c in summary["contacts"])
 
 
 def test_the_pb4_lid_fits_the_base(tmp_path):
@@ -128,7 +190,9 @@ def test_the_pb4_lid_fits_the_base(tmp_path):
     wall = 3.0
     rims = 2 * b * wall  # the two end walls' tops
     sides = 2 * (l * wall + 2 * wall * (h - wall))  # the floor's and end walls' edges at +-y
-    assert lid["a"].endswith("/base") and lid["area_mm2"] == pytest.approx(rims + sides)
+    retainers = 2 * (65.0 + 1.0 + 2.0) * 12.0  # the side retainers' and front mini wall's
+    # outer faces, flush at +-y: a cell length, the 1 mm gap and the 2 mm wall, 12 mm tall
+    assert lid["a"] == "PB4/chassis" and lid["area_mm2"] == pytest.approx(rims + sides + retainers)
     # the lid overhangs a = 5 mm at each end, adds its thickness each side and on top,
     # and reaches the base's bottom
     assert summary["bounding_box"]["size"] == pytest.approx([l + 10, b + 2 * wall, h + wall])

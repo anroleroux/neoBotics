@@ -13,7 +13,7 @@ from neobotics.pipeline import run_script
 from neobotics.site import DOWNLOADS, Assembly, Product, build_site, read_part
 
 PRODUCTS = Path(__file__).resolve().parents[1] / "products"
-BRACKET = PRODUCTS / "B4" / "motor_mounts" / "nema17_bracket"
+BRACKET = Path(__file__).resolve().parent / "fixtures" / "nema17_bracket"
 
 PLATE = """\
 \"\"\"A 30 x 30 x 4 mm plate.\"\"\"
@@ -31,9 +31,10 @@ def _part(directory: Path, script: str = PLATE) -> None:
 
 @pytest.fixture(scope="module")
 def catalogue(tmp_path_factory):
-    """The real B4 bracket, plus a product with a sub-assembly two levels down."""
+    """The reference bracket in a B4 product, plus a product with a sub-assembly two levels down."""
     root = tmp_path_factory.mktemp("products")
-    shutil.copytree(PRODUCTS / "B4", root / "B4")
+    shutil.copytree(BRACKET, root / "B4" / "motor_mounts" / "nema17_bracket")
+    (root / "B4" / "product.md").write_text("# B4\n\nThe B4 line.\n")
     _part(root / "Z9" / "drive" / "left_wheel" / "hub")
     _part(root / "Z9" / "cover")  # a part of the product itself
     (root / "Z9" / "product.md").write_text("# Z9 <beta>\n\nA second product & line.\n")
@@ -52,9 +53,10 @@ def _page(catalogue, *path):
 # ---- the breakdown -----------------------------------------------------------
 def test_discover_walks_the_real_catalogue():
     designations = [e.designation for e in discover(PRODUCTS)]
-    assert designations == ["B4/motor_mounts/nema17_bracket",
-                            "PB4/chassis", "PB4/chassis/base", "PB4/chassis/battery_18650",
-                            "PB4", "PB4/lid"]
+    assert designations == ["PB4/chassis", "PB4/chassis/base", "PB4/chassis/battery_18650",
+                            "PB4/chassis/bms_2s",
+                            "PB4/chassis/cn3302_charger", "PB4/chassis/ip6505_charger",
+                            "PB4", "PB4/lid", "RA6/base/base_plate"]
 
 
 def test_discover_follows_sub_assemblies(tmp_path):
