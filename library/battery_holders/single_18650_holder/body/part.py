@@ -8,7 +8,10 @@ battery clip's thickness, making a slot, open at the top and the bottom, that
 the clip's plate slides into, and each outer wall has a slot from its top
 down past where the clip's solder lug passes through it. A notch 0.25 in
 wide and 4 mm deep in the top of each end wall takes the clip's fold, which
-hooks over the wall with its spring leaf on the cell's side. Change wall and the outside grows with it; the
+hooks over the wall with its spring leaf on the cell's side. Along the
+bottom, a triangular extrusion on each side runs the full length: flush with
+the bottom, up the side wall, and down at 45 degrees towards the centre,
+about 1 mm outside the cradles' arcs. Change wall and the outside grows with it; the
 cavity keeps the cell's size, which comes from the battery part, and the
 slots the clip's thickness, so the body follows a change to either.
 
@@ -36,9 +39,18 @@ Assumptions where the description is silent:
 - each lug slot runs from the outer wall's top down to 0.2 mm below the lug's
   underside where it leaves the wall, and is 0.2 mm wider than the lug each
   side;
+- each triangle's profile spans from its 45 degree face to the body's outer
+  side face (merging with the side wall), and its 45 degree face is exactly
+  1 mm from the cradles' arcs, measured square to the face; so it meets the
+  bottom 4.3 mm from the centre and the side wall's inside 5.2 mm up;
+- the triangles run the body's whole length, through the end walls, the clip
+  slots and the outer walls, so they partly close the slots' bottoms at the
+  sides (clear of the clips, which are 6.35 mm wide);
 - no fillets or holes yet;
 - x is the cell's axis, centred on the origin; the body stands on z = 0.
 """
+import math
+
 import cadquery as cq
 
 cell = load_part("../battery")  # the cell this body holds: diameter, length
@@ -60,6 +72,7 @@ slot = clip.thickness  # between each end wall and its outer wall
 lug_clearance = 0.2  # round the clip's solder lug, in the outer walls
 notch_width = 0.250 * 25.4  # in the end walls' tops, across y: the clip's width
 notch_depth = 4.0  # from the end walls' tops
+gusset_offset = 1.0  # from the cradles' arcs to the triangles' 45 degree faces
 
 inner_length = cell_length + 2 * end_clearance
 inner_width = cell_diameter + 2 * side_clearance
@@ -117,7 +130,21 @@ notches = (
     .rect(wall, notch_width)
     .extrude(notch_depth)
 )
+# the triangles along the bottom: a 45 degree face gusset_offset outside the
+# cradle's circle (centre on the axis, axis_height up) meets z = 0 at
+# gusset_foot from the centre: |axis_height + gusset_foot| / sqrt(2) = radius + offset
+gusset_foot = math.sqrt(2) * (cradle_radius + gusset_offset) - axis_height
+gusset_rise = width / 2 - gusset_foot  # up the body's outer side face
+gussets = [
+    cq.Workplane("YZ", origin=(-length / 2, 0, 0))
+    .polyline([(side * gusset_foot, 0), (side * width / 2, 0), (side * width / 2, gusset_rise)])
+    .close()
+    .extrude(length)
+    for side in (1, -1)
+]
 result = frame.cut(slots).cut(lug_slots).cut(notches).union(ribs.cut(cradle))
+for gusset in gussets:
+    result = result.union(gusset)
 
 regions = {
     "bottom": result.faces("<Z"),  # the walls' and ribs' feet: the mounting face
