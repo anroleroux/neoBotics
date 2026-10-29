@@ -11,7 +11,9 @@ wide and 4 mm deep in the top of each end wall takes the clip's fold, which
 hooks over the wall with its spring leaf on the cell's side. Along the
 bottom, a triangular extrusion on each side runs the full length: flush with
 the bottom, up the side wall, and down at 45 degrees towards the centre,
-about 1 mm outside the cradles' arcs. Change wall and the outside grows with it; the
+about 1 mm outside the cradles' arcs. Each triangle has an M1.2 threaded
+hole in from both end faces, for the screws of a strip bolted on across the
+end. Change wall and the outside grows with it; the
 cavity keeps the cell's size, which comes from the battery part, and the
 slots the clip's thickness, so the body follows a change to either.
 
@@ -46,7 +48,12 @@ Assumptions where the description is silent:
 - the triangles run the body's whole length, through the end walls, the clip
   slots and the outer walls, so they partly close the slots' bottoms at the
   sides (clear of the clips, which are 6.35 mm wide);
-- no fillets or holes yet;
+- the M1.2 holes are tap drill size, 0.95 mm, plain (the thread is formed
+  by the screw), 5 mm deep from the end face, along x; each sits at the
+  triangle's incentre (1.83 mm from its side, its bottom and its 45 degree
+  face), so a 2.3 mm countersunk head (DIN 963) on it stays 0.68 mm inside
+  the body's side and bottom;
+- no fillets yet;
 - x is the cell's axis, centred on the origin; the body stands on z = 0.
 """
 import math
@@ -73,6 +80,8 @@ lug_clearance = 0.2  # round the clip's solder lug, in the outer walls
 notch_width = 0.250 * 25.4  # in the end walls' tops, across y: the clip's width
 notch_depth = 4.0  # from the end walls' tops
 gusset_offset = 1.0  # from the cradles' arcs to the triangles' 45 degree faces
+screw_tap_drill = 0.95  # M1.2 x 0.25
+screw_hole_depth = 5.0  # from each end face, along x
 
 inner_length = cell_length + 2 * end_clearance
 inner_width = cell_diameter + 2 * side_clearance
@@ -142,14 +151,31 @@ gussets = [
     .extrude(length)
     for side in (1, -1)
 ]
+# the screw holes: at each triangle's incentre, the point farthest from its
+# three faces; a right isosceles triangle with legs gusset_rise has inradius
+# gusset_rise * (2 - sqrt(2)) / 2
+screw_inset = gusset_rise * (2 - math.sqrt(2)) / 2  # from the side face and the bottom
+screw_y = width / 2 - screw_inset
+screw_holes = [
+    cq.Workplane("YZ", origin=(end * length / 2, 0, 0))
+    .pushPoints([(screw_y, screw_inset), (-screw_y, screw_inset)])
+    .circle(screw_tap_drill / 2)
+    .extrude(-end * screw_hole_depth)  # into the body from that end
+    for end in (1, -1)
+]
 result = frame.cut(slots).cut(lug_slots).cut(notches).union(ribs.cut(cradle))
 for gusset in gussets:
     result = result.union(gusset)
+for holes in screw_holes:
+    result = result.cut(holes)
 
 regions = {
     "bottom": result.faces("<Z"),  # the walls' and ribs' feet: the mounting face
     "rim": result.faces(">Z"),  # the open top's edge
-    "cradles": result.faces("%CYLINDER"),  # where the cell lies
+    "cradles": result.faces("%CYLINDER").filter(  # where the cell lies: the half circles
+        lambda f: abs(f.BoundingBox().ylen - 2 * cradle_radius) < 1e-3),
+    "screw_holes": result.faces("%CYLINDER").filter(  # the M1.2 tap holes, at the ends
+        lambda f: abs(f.BoundingBox().ylen - screw_tap_drill) < 1e-3),
     "clip_slots": result.faces("|X").filter(  # each slot's two faces, at the end walls' outsides
         lambda f: abs(abs(f.Center().x) - end_wall_outside) < 1e-6
         or abs(abs(f.Center().x) - (end_wall_outside + slot)) < 1e-6),

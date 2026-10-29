@@ -172,3 +172,18 @@ def test_the_single_18650_holder_cradles_its_cell(tmp_path):
     for i in range(3):  # inside the body
         assert body["bounding_box_min"][i] <= cell["bounding_box_min"][i]
         assert cell["bounding_box_max"][i] <= body["bounding_box_max"][i]
+
+
+def test_the_single_18650_holder_takes_m12_screws_in_its_triangles(tmp_path):
+    """Four M1.2 tap holes, one in each bottom triangle at each end, entirely in
+    material, far enough in that a 2.3 mm countersunk head clears the side and
+    the bottom."""
+    import math
+
+    summary = _summary(build_part(LIBRARY / "battery_holders/single_18650_holder/body/part.py",
+                                  tmp_path / "out"))
+    assert summary["regions"]["screw_holes"]["count"] == 4
+    width = summary["bounding_box"]["size"][1]
+    foot = math.sqrt(2) * (18.4 / 2 + 0.1 + 1.0) - (1.0 + 18.4 / 2 + 0.1)  # the 45 face meets z = 0
+    inset = (width / 2 - foot) * (2 - math.sqrt(2)) / 2  # the triangle's inradius
+    assert inset - 2.3 / 2 == pytest.approx(0.676, abs=1e-3)  # head clear of side and bottom
