@@ -5,7 +5,8 @@ top and the bottom, with walls wall thick (1 mm by default). Two ribs across
 the inside, spaced along the cell's length, each have a semicircular cradle
 the cell lies in. Outside each end wall a second wall stands off by the
 battery clip's thickness, making a slot, open at the top and the bottom, that
-the clip's plate slides into. Change wall and the outside grows with it; the
+the clip's plate slides into, and each outer wall has a slot from its top
+down past where the clip's solder lug passes through it. Change wall and the outside grows with it; the
 cavity keeps the cell's size, which comes from the battery part, and the
 slots the clip's thickness, so the body follows a change to either.
 
@@ -25,8 +26,11 @@ Assumptions where the description is silent:
   the cavity's width, inner_width;
 - the slots are exactly the clip's sheet thickness (0.3 mm), with no
   clearance, as asked;
-- no fillets or holes yet, and no opening in the outer walls for the clip's
-  solder lug;
+- the clip stands in its slot on z = 0, level with the body's bottom, and
+  goes in from the top: so each lug slot runs from the outer wall's top down
+  to 0.2 mm below the lug's underside where it leaves the wall, and is 0.2 mm
+  wider than the lug each side;
+- no fillets or holes yet;
 - x is the cell's axis, centred on the origin; the body stands on z = 0.
 """
 import cadquery as cq
@@ -47,6 +51,7 @@ rib_spacing = cell_length / 2  # centre to centre, along x
 cradle_clearance = 0.1  # on the radius, round the cell
 rib_base = 1.0  # rib material under the cradle
 slot = clip.thickness  # between each end wall and its outer wall
+lug_clearance = 0.2  # round the clip's solder lug, in the outer walls
 
 inner_length = cell_length + 2 * end_clearance
 inner_width = cell_diameter + 2 * side_clearance
@@ -54,6 +59,14 @@ end_wall_outside = inner_length / 2 + wall  # each end wall's outer face, from t
 length = inner_length + 2 * (wall + slot + wall)  # overall, over the outer walls
 width = inner_width + 2 * wall
 cradle_radius = cell_diameter / 2 + cradle_clearance
+# the clip's lug runs down and out from its root; its underside is lowest where
+# it leaves the outer wall, slot + wall out from the clip's back (on the
+# clip's own centreline, at x = half; the underside is half / dx below it)
+lug_exit = slot + wall
+lug_underside = (clip.lug_root + (lug_exit - clip.half) * clip.dz / clip.dx
+                 - clip.half / clip.dx)
+lug_slot_bottom = lug_underside - lug_clearance
+lug_slot_width = clip.lug_width + 2 * lug_clearance
 axis_height = rib_base + cradle_radius  # the cradles' centre, and the ribs' top
 
 frame = (
@@ -79,7 +92,14 @@ cradle = (
     .circle(cradle_radius)
     .extrude(length)
 )
-result = frame.cut(slots).union(ribs.cut(cradle))
+lug_slots = (
+    cq.Workplane("XY", origin=(0, 0, lug_slot_bottom))
+    .pushPoints([(-(end_wall_outside + slot + wall / 2), 0),
+                 (end_wall_outside + slot + wall / 2, 0)])
+    .rect(wall, lug_slot_width)
+    .extrude(height - lug_slot_bottom)
+)
+result = frame.cut(slots).cut(lug_slots).union(ribs.cut(cradle))
 
 regions = {
     "bottom": result.faces("<Z"),  # the walls' and ribs' feet: the mounting face
