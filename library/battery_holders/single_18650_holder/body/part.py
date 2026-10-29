@@ -6,7 +6,9 @@ the inside, spaced along the cell's length, each have a semicircular cradle
 the cell lies in. Outside each end wall a second wall stands off by the
 battery clip's thickness, making a slot, open at the top and the bottom, that
 the clip's plate slides into, and each outer wall has a slot from its top
-down past where the clip's solder lug passes through it. Change wall and the outside grows with it; the
+down past where the clip's solder lug passes through it. A notch 0.25 in
+wide and 4 mm deep in the top of each end wall takes the clip's fold, which
+hooks over the wall with its spring leaf on the cell's side. Change wall and the outside grows with it; the
 cavity keeps the cell's size, which comes from the battery part, and the
 slots the clip's thickness, so the body follows a change to either.
 
@@ -26,10 +28,14 @@ Assumptions where the description is silent:
   the cavity's width, inner_width;
 - the slots are exactly the clip's sheet thickness (0.3 mm), with no
   clearance, as asked;
-- the clip stands in its slot on z = 0, level with the body's bottom, and
-  goes in from the top: so each lug slot runs from the outer wall's top down
-  to 0.2 mm below the lug's underside where it leaves the wall, and is 0.2 mm
-  wider than the lug each side;
+- each notch is centred across y and exactly the clip's width (0.250 in),
+  with no clearance;
+- the clip goes in from the top and hangs on its fold: the fold's inner
+  curve (1 mm across, the end wall's thickness) rests on the notch's two top
+  edges, which puts the clip's foot clip_base above z = 0;
+- each lug slot runs from the outer wall's top down to 0.2 mm below the lug's
+  underside where it leaves the wall, and is 0.2 mm wider than the lug each
+  side;
 - no fillets or holes yet;
 - x is the cell's axis, centred on the origin; the body stands on z = 0.
 """
@@ -52,6 +58,8 @@ cradle_clearance = 0.1  # on the radius, round the cell
 rib_base = 1.0  # rib material under the cradle
 slot = clip.thickness  # between each end wall and its outer wall
 lug_clearance = 0.2  # round the clip's solder lug, in the outer walls
+notch_width = 0.250 * 25.4  # in the end walls' tops, across y: the clip's width
+notch_depth = 4.0  # from the end walls' tops
 
 inner_length = cell_length + 2 * end_clearance
 inner_width = cell_diameter + 2 * side_clearance
@@ -59,12 +67,16 @@ end_wall_outside = inner_length / 2 + wall  # each end wall's outer face, from t
 length = inner_length + 2 * (wall + slot + wall)  # overall, over the outer walls
 width = inner_width + 2 * wall
 cradle_radius = cell_diameter / 2 + cradle_clearance
+notch_bottom = height - notch_depth
+# the clip hangs on the notch: its fold's straight legs end, and its inner
+# curve starts, at the clip's plate_top, level with the notch's bottom edges
+clip_base = notch_bottom - clip.plate_top
 # the clip's lug runs down and out from its root; its underside is lowest where
 # it leaves the outer wall, slot + wall out from the clip's back (on the
 # clip's own centreline, at x = half; the underside is half / dx below it)
 lug_exit = slot + wall
-lug_underside = (clip.lug_root + (lug_exit - clip.half) * clip.dz / clip.dx
-                 - clip.half / clip.dx)
+lug_underside = clip_base + (clip.lug_root + (lug_exit - clip.half) * clip.dz / clip.dx
+                             - clip.half / clip.dx)
 lug_slot_bottom = lug_underside - lug_clearance
 lug_slot_width = clip.lug_width + 2 * lug_clearance
 axis_height = rib_base + cradle_radius  # the cradles' centre, and the ribs' top
@@ -99,7 +111,13 @@ lug_slots = (
     .rect(wall, lug_slot_width)
     .extrude(height - lug_slot_bottom)
 )
-result = frame.cut(slots).cut(lug_slots).union(ribs.cut(cradle))
+notches = (
+    cq.Workplane("XY", origin=(0, 0, notch_bottom))
+    .pushPoints([(-(inner_length + wall) / 2, 0), ((inner_length + wall) / 2, 0)])
+    .rect(wall, notch_width)
+    .extrude(notch_depth)
+)
+result = frame.cut(slots).cut(lug_slots).cut(notches).union(ribs.cut(cradle))
 
 regions = {
     "bottom": result.faces("<Z"),  # the walls' and ribs' feet: the mounting face

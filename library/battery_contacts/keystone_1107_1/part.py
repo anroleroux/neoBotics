@@ -4,7 +4,7 @@ A tin-nickel plated spring-steel battery clip: a flat plate with a solder lug
 cut from its middle and bent out at an angle to one side, with a solder hole
 in it, and at the top a jog that folds the sheet 180 degrees back down on the
 other side: the spring leaf the cell presses on. From the catalogue drawing:
-6.4 mm (0.250 in) wide, 13.7 mm (0.538 in) tall, the lug reaching 4.0 mm
+6.35 mm (0.250 in) wide, 13.7 mm (0.538 in) tall, the lug reaching 4.0 mm
 (0.156 in) from the plate's back with its end 7.6 mm (0.300 in) below the
 top, and a 1.8 mm (0.070 in) solder hole.
 
@@ -21,8 +21,11 @@ Assumptions where the drawing is silent:
   end's centre is about 0.05 mm lower than that point;
 - the solder hole is through the lug, halfway along its straight run;
 - the 13.7 mm height is overall, over the fold; the fold has an inner radius
-  of 0.3 mm, so the leaf is 0.6 mm off the plate, and runs the plate's full
-  width down to z = 0;
+  of 0.5 mm, so the leaf is 1.0 mm off the plate: it hooks over a 1 mm wall
+  (a holder's end wall) with the plate on one side and the leaf on the
+  other; the leaf runs the plate's full width down to z = 0;
+- the width is the drawing's 0.250 in exactly (6.35 mm; the drawing rounds
+  it to 6.4 mm);
 - the drawing's notches at the plate's foot are left out;
 - modelled standing on z = 0, centred across y: the plate between x = 0 and
   the sheet's thickness, the solder lug towards +x (out through the holder's
@@ -34,7 +37,7 @@ import cadquery as cq
 
 # parameters, in mm
 thickness = 0.3  # the sheet
-width = 6.4  # 0.250 in
+width = 0.250 * 25.4  # 6.35 mm
 height = 13.7  # 0.538 in
 depth = 4.0  # 0.156 in: the plate's back to the lug's farthest corner
 lug_end_below_top = 7.6  # 0.300 in
@@ -44,7 +47,7 @@ lug_width = 3.0
 lug_gap = 0.4  # each side of the lug, in the window
 window_bottom = 1.5
 lug_root = 9.6  # the window's top, where the lug bends out
-fold_radius = 0.3  # inside the 180 degree jog at the top
+fold_radius = 0.5  # inside the 180 degree jog at the top: a 1 mm gap
 
 fold_outer = fold_radius + thickness
 plate_top = height - fold_outer  # where the plate's straight part ends and the fold starts
