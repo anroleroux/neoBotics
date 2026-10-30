@@ -11,7 +11,7 @@
     neobotics view results/nema17_bracket/cad/part.stl
 
     # build one catalogue part by its designation: product/assembly/.../part
-    neobotics build PB4/chassis/lid
+    neobotics build PB6/chassis/lid
     # or a reusable one in the parts library: library/category/item/...
     neobotics build library/battery_holders/holder_18650
 
@@ -64,7 +64,7 @@ def main(argv: list[str] | None = None) -> int:
     p_view.add_argument("--view", default="iso")
 
     p_build = sub.add_parser("build", help="build one catalogue part by its designation, "
-                                           "e.g. PB4/chassis/lid")
+                                           "e.g. PB6/chassis/lid")
     p_build.add_argument("designation", help="<product>/<assembly>/.../<part>, or "
                                              "library/<category>/<item>/...")
     p_build.add_argument("--root", type=Path, default=Path("products"),

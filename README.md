@@ -62,7 +62,7 @@ neobotics cad tests/fixtures/nema17_bracket/part.py --out results/nema17_bracket
 neobotics view results/nema17_bracket/cad/part.stl
 
 # build one catalogue part by its designation
-neobotics build PB4/chassis/lid
+neobotics build PB6/chassis/lid
 # or a reusable part or assembly in the parts library
 neobotics build library/battery_holders/holder_18650
 
@@ -88,17 +88,18 @@ part has its `description.md` and `part.py`. `product.md` and `assembly.md`
 name and describe the levels above.
 
 - **RA6** has the assembly **Base** with the base plate.
-- **PB4** has:
-  - the assembly **Chassis**: a base driven by `l`, `b`, `h` and `wall`, and an
-    18650 cell. The chassis `assembly.py` lays four cells along x against the
-    back wall.
+- **PB6** has:
+  - the assembly **Chassis**: a base driven by `l`, `b`, `h` and `wall`, its
+    charger and BMS boards, and the library's six-cell 18650 pack
+    (`battery_holders/pack_3x2`), which the chassis `assembly.py` sets on the
+    floor against the back wall.
   - its own part, the **lid**, sized from the base.
 
-  `PB4/assembly.py` seats the lid on the chassis, and the build checks the fit.
+  `PB6/assembly.py` seats the lid on the chassis, and the build checks the fit.
 
-A part's designation is its path (`PB4/chassis/lid`).
+A part's designation is its path (`PB6/chassis/lid`).
 `neobotics build <designation>` builds just that part, or an assembly's
-assembled model (`PB4/chassis`). A script can read another part's variables
+assembled model (`PB6/chassis`). A script can read another part's variables
 with `load_part("../base")`. See `products/README.md`.
 
 ### The parts library

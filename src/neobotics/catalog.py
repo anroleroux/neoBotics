@@ -1,7 +1,7 @@
 """The product catalogue: a product breakdown under ``products/``.
 
     products/
-      PB4/                              a product; the directory name is its designation
+      PB6/                              a product; the directory name is its designation
         product.md                      "# Title", then a paragraph or two about it
         assembly.py                     optional: the whole product, assembled
         lid/                            a part of the product itself
@@ -39,14 +39,14 @@ script places a library item with ``load_library("battery_holders/holder_18650")
 (see :mod:`neobotics.part`); the site lists, on each library item's page,
 the products that use it.
 
-A product holds assemblies and parts of its own (``PB4/lid``).  An assembly
+A product holds assemblies and parts of its own (``PB6/lid``).  An assembly
 holds either sub-assemblies or parts, never both, so the leaves of the
 breakdown are assemblies of parts.  The product, and any assembly, may also
 hold an ``assembly.py``: its contents placed together as a ``cq.Assembly``
 with ``load_part``, built and shown as that level's assembled model.
 
 Every directory name is a slug, and a part's *designation* is the path to it:
-``PB4/chassis/base``.  ``product.md`` and ``assembly.md`` give the display
+``PB6/chassis/base``.  ``product.md`` and ``assembly.md`` give the display
 title (their ``#`` heading) and blurb; without them the slug is the title.
 Directories starting with ``.`` or ``_`` are ignored, and everything appears
 in alphabetical order of its slug.
@@ -97,14 +97,14 @@ class Entry:
 
     @property
     def designation(self) -> str:
-        """``PB4/chassis/lid``; in the library, what ``load_library`` takes:
+        """``PB6/chassis/lid``; in the library, what ``load_library`` takes:
         ``battery_holders/holder_18650``."""
         return "/".join([self.product, *self.assemblies, *([self.part] if self.part else [])])
 
     @property
     def address(self) -> str:
         """The designation with its section, as ``neobotics build`` takes it:
-        ``PB4/chassis/lid``, ``library/battery_holders/holder_18650``."""
+        ``PB6/chassis/lid``, ``library/battery_holders/holder_18650``."""
         return self.designation if self.section == PRODUCTS else f"{self.section}/{self.designation}"
 
     def out_dir(self, results: Path) -> Path:
@@ -193,7 +193,7 @@ def discover_all(root: Path, library: Path | None = None) -> list[Entry]:
 
 
 def find(root: Path, designation: str, library: Path | None = None) -> Entry:
-    """The part (``PB4/chassis/lid``) or assembly model (``PB4/chassis``) a
+    """The part (``PB6/chassis/lid``) or assembly model (``PB6/chassis``) a
     designation names; ``library/...`` names one in the parts library."""
     wanted = designation.strip().strip("/")
     for entry in discover_all(root, library):

@@ -53,10 +53,9 @@ def _page(catalogue, *path):
 # ---- the breakdown -----------------------------------------------------------
 def test_discover_walks_the_real_catalogue():
     designations = [e.designation for e in discover(PRODUCTS)]
-    assert designations == ["PB4/chassis", "PB4/chassis/base", "PB4/chassis/battery_18650",
-                            "PB4/chassis/bms_2s",
-                            "PB4/chassis/cn3302_charger", "PB4/chassis/ip6505_charger",
-                            "PB4", "PB4/lid", "RA6/base/base_plate"]
+    assert designations == ["PB6/chassis", "PB6/chassis/base", "PB6/chassis/bms_2s",
+                            "PB6/chassis/cn3302_charger", "PB6/chassis/ip6505_charger",
+                            "PB6", "PB6/lid", "RA6/base/base_plate"]
 
 
 def test_discover_follows_sub_assemblies(tmp_path):
@@ -94,12 +93,12 @@ def test_a_part_holds_no_directories(tmp_path):
 
 
 def test_find_by_designation():
-    assert find(PRODUCTS, "PB4/chassis/base/").script.name == "part.py"
-    assert find(PRODUCTS, "PB4/chassis").script.name == "assembly.py"
-    assert find(PRODUCTS, "PB4").script.name == "assembly.py"  # the product's own model
-    assert find(PRODUCTS, "PB4/lid").part == "lid"
+    assert find(PRODUCTS, "PB6/chassis/base/").script.name == "part.py"
+    assert find(PRODUCTS, "PB6/chassis").script.name == "assembly.py"
+    assert find(PRODUCTS, "PB6").script.name == "assembly.py"  # the product's own model
+    assert find(PRODUCTS, "PB6/lid").part == "lid"
     with pytest.raises(KeyError):
-        find(PRODUCTS, "PB4/chassis/nope")
+        find(PRODUCTS, "PB6/chassis/nope")
 
 
 @pytest.mark.parametrize("script, title", [
@@ -121,10 +120,10 @@ def test_read_heading(tmp_path):
 
 
 def test_build_command_builds_one_part_by_designation(tmp_path, capsys):
-    assert cli_main(["build", "PB4/chassis/base", "--out", str(tmp_path)]) == 0
-    cad = tmp_path / "PB4" / "chassis" / "base" / "cad"
+    assert cli_main(["build", "PB6/chassis/base", "--out", str(tmp_path)]) == 0
+    cad = tmp_path / "PB6" / "chassis" / "base" / "cad"
     assert (cad / "part.step").exists()
-    assert "built PB4/chassis/base" in capsys.readouterr().out
+    assert "built PB6/chassis/base" in capsys.readouterr().out
 
 
 def test_cad_run_keeps_the_description_next_to_the_script(tmp_path):

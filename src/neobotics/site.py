@@ -399,7 +399,7 @@ def _contents(product: Product, chain: tuple[Assembly, ...]) -> str:
 
 def _breadcrumb(product: Product, chain: tuple[Assembly, ...], root: str,
                 current: str | None) -> str:
-    """neoBotics › PB4 › Chassis › … (neoBotics › Parts library › Battery holders
+    """neoBotics › PB6 › Chassis › … (neoBotics › Parts library › Battery holders
     › … in the library) — every level a link but the page itself."""
     levels = [("neoBotics", f"{root}index.html")]
     if product.in_library:

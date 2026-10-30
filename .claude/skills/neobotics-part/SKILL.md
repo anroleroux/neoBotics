@@ -1,6 +1,6 @@
 ---
 name: neobotics-part
-description: Add or change a 3D part, or an assembly's assembled model, in the neoBotics product catalogue from natural-language instructions, then build its CAD (B-rep, STEP, STL, views) and update the HTML site. Use whenever the user names a product, assembly and part designation (e.g. "PB4 / chassis / lid", "PB4-chassis-lid", "in PB4, assembly drive, sub-assembly left_wheel, part hub") or an assembly designation ("PB4 / chassis: assemble the lid on the box") together with modelling instructions, or asks to add, modify, remove, rename or rebuild a product, assembly, sub-assembly or part.
+description: Add or change a 3D part, or an assembly's assembled model, in the neoBotics product catalogue from natural-language instructions, then build its CAD (B-rep, STEP, STL, views) and update the HTML site. Use whenever the user names a product, assembly and part designation (e.g. "PB6 / chassis / lid", "PB6-chassis-lid", "in PB6, assembly drive, sub-assembly left_wheel, part hub") or an assembly designation ("PB6 / chassis: assemble the lid on the box") together with modelling instructions, or asks to add, modify, remove, rename or rebuild a product, assembly, sub-assembly or part.
 ---
 
 # Add or change a neoBotics part
@@ -15,7 +15,7 @@ the user's instructions for one part from words to a published 3D model:
 ```
 products/<PRODUCT>/product.md                       "# Title" + blurb
 products/<PRODUCT>/assembly.py                      optional: the whole product, assembled
-products/<PRODUCT>/<part>/...                       a part of the product itself (e.g. PB4/lid)
+products/<PRODUCT>/<part>/...                       a part of the product itself (e.g. PB6/lid)
 products/<PRODUCT>/<assembly>/assembly.md           "# Title" + blurb
 products/<PRODUCT>/<assembly>/<sub>/.../assembly.md  sub-assemblies, any depth
 products/<PRODUCT>/<assembly>/.../<part>/description.md   the instructions (source of truth)
@@ -23,12 +23,12 @@ products/<PRODUCT>/<assembly>/.../<part>/part.py          the CadQuery script
 products/<PRODUCT>/<assembly>/assembly.py                 optional: the assembled model
 ```
 
-- A product holds assemblies **and** parts of its own (`PB4/lid`), and may have
+- A product holds assemblies **and** parts of its own (`PB6/lid`), and may have
   an `assembly.py` for the whole product. An assembly holds **either**
   sub-assemblies **or** parts (it is a leaf), never both.
-- A part's **designation** is its path: `PB4/chassis/lid`. An assembly's is
-  its path too: `PB4/chassis`.
-- Product directories keep the user's code as given (`PB4`). Assembly and part
+- A part's **designation** is its path: `PB6/chassis/lid`. An assembly's is
+  its path too: `PB6/chassis`.
+- Product directories keep the user's code as given (`PB6`). Assembly and part
   slugs are lowercase with underscores (`motor_mounts`, `left_wheel`). Titles
   for display go in the markdown files.
 - `neobotics site` refuses a breakdown that breaks these rules, and names the
@@ -113,7 +113,7 @@ library/<category>/<assembly>/<part>/...          its parts
 
    Worked examples:
    - `products/RA6/base/base_plate/part.py`: a standalone part;
-   - `products/PB4/chassis/lid/part.py`: a part sized from another with
+   - `products/PB6/chassis/lid/part.py`: a part sized from another with
      `load_part`.
 
 4b. **Assembled model (`assembly.py`)**, when the user asks for parts to be
@@ -181,7 +181,7 @@ library/<category>/<assembly>/<part>/...          its parts
 8. **Commit and push.**
    - Commit only `products/` changes (and code, if any). Never commit
      `results/` or `site/`; they are build output and are git-ignored.
-   - Message: `Add PB4/chassis/lid: <one line>` or `Update …: <what changed>`.
+   - Message: `Add PB6/chassis/lid: <one line>` or `Update …: <what changed>`.
    - Push to the working branch. CI rebuilds every part and redeploys GitHub
      Pages on push.
 
@@ -190,7 +190,7 @@ library/<category>/<assembly>/<part>/...          its parts
    - what was built: size and key features;
    - any assumptions you had to make;
    - the page link: `https://anroleroux.github.io/neoBotics/products/<designation>/index.html`
-     (e.g. `.../products/PB4/chassis/battery_18650/index.html`).
+     (e.g. `.../products/PB6/chassis/base/index.html`).
      For a library item it is `.../library/<category>/<item>/index.html`.
 
 ## Other changes

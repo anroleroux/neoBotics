@@ -22,7 +22,7 @@ products/<PRODUCT>/<assembly>/.../<part>/part.py            the CadQuery script 
 
 The rules:
 
-- A product holds assemblies, and parts of its own (`PB4/lid`).
+- A product holds assemblies, and parts of its own (`PB6/lid`).
 - An assembly holds either sub-assemblies or parts (it is a leaf), never both.
 - A part is any directory with a `part.py`.
 
@@ -35,9 +35,9 @@ The rules:
   read its variables. That is how the lid takes its size from the box, and how
   `assembly.py` gets the parts it places.
 
-A part's **designation** is its path, for example `PB4/chassis/lid`. An
-assembly's designation is its path too (`PB4/chassis`).
-Product directories keep their code (`PB4`). Assembly and part slugs are
+A part's **designation** is its path, for example `PB6/chassis/lid`. An
+assembly's designation is its path too (`PB6/chassis`).
+Product directories keep their code (`PB6`). Assembly and part slugs are
 lowercase with underscores. Titles come from `product.md`, from `assembly.md`,
 and from the first line of a part script's docstring. Without them, the slug
 is shown.
@@ -52,7 +52,7 @@ product. A product script places one with
 ## Adding or changing a part
 
 In a Claude Code session, give the designation and the instructions, for
-example: "PB4 / chassis / base: a box that is open at the top …". The
+example: "PB6 / chassis / base: a box that is open at the top …". The
 `neobotics-part` skill (`.claude/skills/neobotics-part/SKILL.md`) then:
 
 1. writes or edits the description;
@@ -64,15 +64,15 @@ example: "PB4 / chassis / base: a box that is open at the top …". The
 By hand, the steps are:
 
 ```bash
-$EDITOR products/PB4/chassis/lid/description.md   # the instructions
-$EDITOR products/PB4/chassis/lid/part.py          # the B-rep code
-neobotics build PB4/chassis/lid                   # -> results/PB4/chassis/lid/cad/
-neobotics build PB4/chassis                       # the assembled model -> results/PB4/chassis/_assembly/cad/
+$EDITOR products/PB6/chassis/lid/description.md   # the instructions
+$EDITOR products/PB6/chassis/lid/part.py          # the B-rep code
+neobotics build PB6/chassis/lid                   # -> results/PB6/chassis/lid/cad/
+neobotics build PB6/chassis                       # the assembled model -> results/PB6/chassis/_assembly/cad/
 neobotics site products --out results --site site        # every part, then the pages
 ```
 
 To have Claude write the script through the API instead:
-`neobotics generate --description products/PB4/chassis/lid/description.md --out results/gen`.
+`neobotics generate --description products/PB6/chassis/lid/description.md --out results/gen`.
 Then copy `results/gen/part.py` into the part's directory. In CI, this is
 Actions → **cad** → *Run workflow* with `design` set to the designation. It
 needs the `ANTHROPIC_API_KEY` repository secret.

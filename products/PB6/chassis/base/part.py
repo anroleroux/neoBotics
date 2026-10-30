@@ -2,13 +2,10 @@
 
 An open-top rectangular box with its side walls at +-y removed: a floor and
 the two end walls at +-x, all one wall thickness, open at the top and along
-both long sides. Four variables drive it: l, b, h and wall. Five ribs on
-the floor run along x: three battery separators between the four 18650 cells
-and two side battery retainers along the open sides. A front mini wall, as
-high as the ribs, stands across the breadth just in front of the cells. The
-side retainers run from the back wall to the mini wall, the centre separator
-from 1 mm in front of the back wall to the mini wall, and the other two
-separators from 1 mm in front of the back wall to the cells' front faces.
+both long sides. Four variables drive it: l, b, h and wall. The floor is
+flat, with no battery ribs: the six-cell 18650 pack from the parts library
+(battery_holders/pack_3x2) sits on it against the back wall, and a front mini
+wall stands across the breadth just in front of the pack.
 The front wall has two holes for USB-A plugs, in line with the ports of the
 two IP6505 fast-charge boards that sit side by side on the floor behind it,
 and a hole for a USB-C plug, in line with the port of the CN3302 battery
@@ -21,18 +18,13 @@ Assumptions where the description is silent:
 - l = 120, b = 80, h = 50 and wall = 3 mm until real sizes are given;
 - the box is centred on the z axis and stands on z = 0, with l along x and b
   along y; corners are sharp;
-- the ribs are 1 mm thick and 12 mm tall above the floor (the first 8 mm
-  plus the requested 4 mm);
-- the cells lie with their negative ends against the back wall (-x), so
-  their front faces, positive buttons included, are a cell length in front
-  of it;
-- the front mini wall is 2 mm thick, 12 mm tall like the ribs, and runs the
-  full breadth b, flush with the side retainers' outer faces; its back face
-  is 1 mm in front of the cells' front faces;
-- the side retainers' outer faces are flush with the box's sides, at +-b/2,
-  and the five ribs are evenly spaced, so the four cell slots share what is
-  left of the breadth equally (18.75 mm each, 0.35 mm wider than a cell);
-- the cells' diameter and length come from battery_18650 through load_part;
+- l grows from 120 to 130 mm to take the pack, which is about 15 mm longer
+  than the four loose cells were;
+- the pack's back end (the tips of its end strip's tabs) is against the back
+  wall (-x); its size comes from pack_3x2 through load_library;
+- the front mini wall is 2 mm thick, 12 mm tall above the floor, and runs the
+  full breadth b, flush with the box's sides; its back face is 1 mm in front
+  of the pack's front end;
 - the first IP6505 board sits on the floor, centred across the breadth, its
   USB port's mouth against the inside of the front wall (+x); the second sits
   beside it on the -y side, 3 mm away, the same way round; each plug hole is
@@ -53,39 +45,28 @@ Assumptions where the description is silent:
 """
 import cadquery as cq
 
-cell = load_part("../battery_18650")  # the cells the ribs hold: diameter, length
+pack = load_library("battery_holders/pack_3x2")  # the six-cell pack: its size
 ip6505 = load_part("../ip6505_charger")  # the USB-A output board behind the front wall
 cn3302 = load_part("../cn3302_charger")  # the USB-C battery charger beside it
 bms = load_part("../bms_2s")  # the battery protection board, on the mini wall's front
 
 # the driving variables, in mm
-l = 120.0  # length, outside, along x
+l = 130.0  # length, outside, along x
 b = 80.0  # breadth, outside, along y
 h = 50.0  # height, outside, along z
 wall = 3.0  # thickness of the walls and the floor
 
-# the battery ribs on the floor
-cell_count = 4  # cells side by side across the breadth
-rib_t = 1.0  # rib thickness, along y
-rib_h = 12.0  # rib height above the floor
-rib_back_gap = 1.0  # between the inner ribs' back ends and the back wall
-front_gap = 1.0  # between the cells' front faces and the front mini wall
+# the six-cell pack on the floor, and the mini wall in front of it
+front_gap = 1.0  # between the pack's front end and the front mini wall
 front_t = 2.0  # front mini wall thickness, along x
-rib_count = cell_count + 1  # three separators and two side retainers
-pitch = (b - rib_t) / cell_count  # rib centre to rib centre
-slot = pitch - rib_t  # clear width of a cell slot between two ribs
-rib_y = [(i - cell_count / 2) * pitch for i in range(rib_count)]  # rib centres
-slot_y = [(i - (cell_count - 1) / 2) * pitch for i in range(cell_count)]  # cell centres
-assert slot > cell.diameter, "the cells do not fit between the ribs"
-cell_back = -l / 2 + wall  # the cells' negative ends, against the back wall
-cell_front = cell_back + cell.length  # the cells' front faces, buttons included
-front_x0 = cell_front + front_gap  # the front mini wall's back face
-# each rib's back and front ends, from -y to +y: the side retainers run from
-# the back wall to the mini wall, the centre separator from just off the back
-# wall to the mini wall, the other two from just off the back wall to the cells
-gapped = cell_back + rib_back_gap
-rib_x = [(cell_back, front_x0), (gapped, cell_front), (gapped, front_x0),
-         (gapped, cell_front), (cell_back, front_x0)]
+front_h = 12.0  # front mini wall height above the floor
+pack_size = pack.result.toCompound().BoundingBox()
+pack_length, pack_breadth, pack_height = pack_size.xlen, pack_size.ylen, pack_size.zlen
+pack_back = -l / 2 + wall  # the pack's back end, against the back wall
+pack_front = pack_back + pack_length  # the pack's front end, the strip's tabs included
+front_x0 = pack_front + front_gap  # the front mini wall's back face
+assert pack_breadth < b, "the pack is wider than the box"
+assert pack_height < h - wall, "the pack is taller than the space inside the box"
 
 # the two USB boards, ports against the front wall, and the holes for their plugs
 plug_clearance = 0.5  # all round a plug, in its hole
@@ -108,8 +89,8 @@ usbc_z = cn3302_z + cn3302.usb_axis_z  # the USB-C hole's centre height
 
 for board, x in ((ip6505, ip6505_x), (cn3302, cn3302_x)):
     assert x - board.length / 2 > front_x0 + front_t, "a USB board does not fit in front of the mini wall"
-assert cn3302_y + cn3302.width / 2 < b / 2 - rib_t, "the CN3302 board does not fit inside the side retainer"
-assert min(ip6505_ys) - ip6505.width / 2 > -b / 2 + rib_t, "an IP6505 board does not fit inside the side retainer"
+assert cn3302_y + cn3302.width / 2 < b / 2, "the CN3302 board does not fit across the breadth"
+assert min(ip6505_ys) - ip6505.width / 2 > -b / 2, "an IP6505 board does not fit across the breadth"
 
 # the BMS, on edge against the mini wall's front face, components to the front
 bms_x = front_x0 + front_t  # its back
@@ -124,18 +105,11 @@ channel = (
 )
 result = cq.Workplane("XY").box(l, b, h, centered=(True, True, False)).cut(channel)
 
-# the ribs and the front mini wall, on the floor
-for (x0, x1), y in zip(rib_x, rib_y):
-    rib = (
-        cq.Workplane("XY", origin=((x0 + x1) / 2, y, wall))
-        .rect(x1 - x0, rib_t)
-        .extrude(rib_h)
-    )
-    result = result.union(rib)
+# the front mini wall, on the floor
 front_wall = (
     cq.Workplane("XY", origin=(front_x0 + front_t / 2, 0, wall))
     .rect(front_t, b)
-    .extrude(rib_h)
+    .extrude(front_h)
 )
 result = result.union(front_wall)
 
@@ -163,8 +137,8 @@ regions = {
     "usbc_hole": result.faces().filter(  # the USB-C hole's sides: two flats, two rounded ends
         lambda f: f.Center().x > front_inside + 1e-6 and f.Center().x < l / 2 - 1e-6
         and abs(f.Center().y - cn3302_y) < usbc_w and abs(f.Center().z - usbc_z) < usbc_h),
-    "rib_tops": result.faces("+Z").filter(  # the tops of the ribs and the front mini wall
-        lambda f: abs(f.Center().z - (wall + rib_h)) < 1e-6),
+    "mini_wall_top": result.faces("+Z").filter(  # the top of the front mini wall
+        lambda f: abs(f.Center().z - (wall + front_h)) < 1e-6),
 }
 
 if "show_object" in globals():  # CQ-editor
