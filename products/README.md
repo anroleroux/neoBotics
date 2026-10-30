@@ -47,7 +47,7 @@ is shown.
 Parts and assemblies that more than one product can use go in the parts
 library, `library/<category>/<item>/` beside `products/`, and not in a
 product. A product script places one with
-`load_library("battery_holders/holder_18650")`. See `library/README.md`.
+`load_library("battery_holders/single_18650_holder")`. See `library/README.md`.
 
 ## Adding or changing a part
 

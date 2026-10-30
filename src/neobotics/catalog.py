@@ -26,16 +26,18 @@ reuse in any product, filed by category::
     library/
       battery_holders/                  a category
         category.md                     "# Title", then a short blurb
-        holder_18650/                   a reusable assembly: a holder and its terminals
+        keystone_1107_1/                a reusable part: a battery clip
+          part.py
+        single_18650_holder/            a reusable assembly: a body, its cell and two clips
           assembly.md
           assembly.py
-          holder/
+          body/
             part.py
-          terminal/
+          battery/
             part.py
 
 A category follows a product's rules: it holds parts and assemblies.  Any
-script places a library item with ``load_library("battery_holders/holder_18650")``
+script places a library item with ``load_library("battery_holders/single_18650_holder")``
 (see :mod:`neobotics.part`); the site lists, on each library item's page,
 the products that use it.
 
@@ -72,7 +74,7 @@ ASSEMBLY_SCRIPT = "assembly.py"
 #: The two sections of the catalogue, and the file naming each one's top levels.
 PRODUCTS, LIBRARY = "products", LIBRARY_DIR
 TOP_FILE = {PRODUCTS: "product.md", LIBRARY: "category.md"}
-#: A script's use of a library item: ``load_library("battery_holders/holder_18650")``.
+#: A script's use of a library item: ``load_library("battery_holders/single_18650_holder")``.
 _USES_LIBRARY = re.compile(r"""load_library\(\s*["']([^"']+)["']""")
 #: Where an assembly model is built and published, inside its assembly's
 #: directory; the leading underscore keeps it clear of every slug.
@@ -98,13 +100,13 @@ class Entry:
     @property
     def designation(self) -> str:
         """``PB6/chassis/lid``; in the library, what ``load_library`` takes:
-        ``battery_holders/holder_18650``."""
+        ``battery_holders/single_18650_holder``."""
         return "/".join([self.product, *self.assemblies, *([self.part] if self.part else [])])
 
     @property
     def address(self) -> str:
         """The designation with its section, as ``neobotics build`` takes it:
-        ``PB6/chassis/lid``, ``library/battery_holders/holder_18650``."""
+        ``PB6/chassis/lid``, ``library/battery_holders/single_18650_holder``."""
         return self.designation if self.section == PRODUCTS else f"{self.section}/{self.designation}"
 
     def out_dir(self, results: Path) -> Path:

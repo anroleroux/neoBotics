@@ -362,12 +362,14 @@ def _counts(node: Assembly) -> str:
     return " · ".join(bits) or "empty"
 
 
-def _card(href: str, thumb: str, kind: str, title: str, slug: str, meta: str) -> str:
+def _card(href: str, thumb: str | None, kind: str, title: str, slug: str, meta: str) -> str:
+    """``thumb`` "" keeps an empty picture frame; None leaves the frame out."""
     image = f'<img src="{_e(thumb)}" alt="" loading=lazy>' if thumb else ""
+    frame = "" if thumb is None else f"<span class=thumb>{image}</span>"
     return f"""
 <li class=item-card>
   <a href="{_e(href)}">
-    <span class=thumb>{image}</span>
+    {frame}
     <span class=card-body>
       <span class=kind>{_e(kind)}</span>
       <span class=item-name>{_e(title)}</span>
@@ -541,18 +543,19 @@ def render_part(product: Product, chain: tuple[Assembly, ...], part: Part) -> st
                  body, viewer=True)
 
 
-def _product_card(product: Product, base: str = "") -> str:
+def _product_card(product: Product, base: str = "", picture: bool = True) -> str:
     """A card for a product or a library category; ``base`` is the site root
-    relative to the page."""
+    relative to the page.  Without ``picture`` the card is text only."""
     thumb = _thumb(product)
     href = f"{base}{product_dir(product)}"
-    return _card(f"{href}/index.html", f"{href}/{thumb}" if thumb else "",
+    image = (f"{href}/{thumb}" if thumb else "") if picture else None
+    return _card(f"{href}/index.html", image,
                  "Category" if product.in_library else "Product",
                  product.title, product.slug, _counts(product))
 
 
-def _library_section(categories: list[Product], base: str = "") -> str:
-    cards = "".join(_product_card(c, base) for c in categories)
+def _library_section(categories: list[Product], base: str = "", pictures: bool = True) -> str:
+    cards = "".join(_product_card(c, base, pictures) for c in categories)
     n_parts = sum(c.n_parts for c in categories)
     return f"""<section class=contents>
     <h2>Parts library <span class=count>{_plural(len(categories), 'category', 'categories')} · {_plural(n_parts, 'part')}</span></h2>
@@ -587,7 +590,7 @@ def render_overview(products: list[Product]) -> str:
     products = [p for p in products if not p.in_library]
     cards = "".join(_product_card(p) for p in products)
     n_parts = sum(p.n_parts for p in products)
-    library = _library_section(categories) if categories else ""
+    library = _library_section(categories, pictures=False) if categories else ""  # text cards
     body = f"""<header class=site-head>
   <div class=wrap>
     <h1>neoBotics</h1>

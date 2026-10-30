@@ -39,7 +39,7 @@ products/<PRODUCT>/<assembly>/assembly.py                 optional: the assemble
 ```
 library/<category>/category.md                    "# Title" + blurb
 library/<category>/<part>/...                     a reusable part
-library/<category>/<assembly>/assembly.md         a reusable assembly (holder + terminal)
+library/<category>/<assembly>/assembly.md         a reusable assembly (holder body + cell + clips)
 library/<category>/<assembly>/assembly.py         optional: its assembled model
 library/<category>/<assembly>/<part>/...          its parts
 ```
@@ -55,8 +55,8 @@ library/<category>/<assembly>/<part>/...          its parts
   same path without `library/` and works from any depth. Use it in products
   rather than copying a library part.
 - Inside a library assembly, parts use `load_part` on each other as usual
-  (the terminal sizes itself from `../holder`).
-- Worked example: `library/battery_holders/holder_18650/`.
+  (the body sizes itself from `../battery`).
+- Worked example: `library/battery_holders/single_18650_holder/`.
 
 ## Steps
 

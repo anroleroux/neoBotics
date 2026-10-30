@@ -12,7 +12,6 @@ from neobotics.catalog import build_catalog, discover_all, find, used_in
 from neobotics.part import build_part
 
 LIBRARY = Path(__file__).resolve().parents[1] / "library"
-HOLDER = LIBRARY / "battery_holders" / "holder_18650"
 
 PLATE = """\
 \"\"\"Plate.\"\"\"
@@ -117,8 +116,12 @@ def test_site_publishes_the_library_with_its_uses(tmp_path):
     site = tmp_path / "site"
     overview = index.read_text()
     assert "Parts library" in overview and 'href="library/fasteners/index.html"' in overview
+    # the overview's category cards are text only; the library's own page keeps the pictures
+    library_part = overview[overview.index("Parts library"):]
+    assert "class=thumb" not in library_part and 'src="library/' not in library_part
     library = (site / "library/index.html").read_text()
     assert 'href="../library/fasteners/index.html"' in library and "Fasteners" in library
+    assert 'src="../library/fasteners/clip/_assembly/part.png"' in library
     category = (site / "library/fasteners/index.html").read_text()
     assert "Category" in category and 'href="clip/index.html"' in category
     assert 'href="../../library/index.html">Parts library</a>' in category  # the breadcrumb
@@ -130,26 +133,6 @@ def test_site_publishes_the_library_with_its_uses(tmp_path):
     pin = (site / "library/fasteners/clip/pin/index.html").read_text()
     assert "Library part" in pin and "Not placed in any product yet" in pin
     assert (site / "products/P1/frame/bracket/index.html").exists()
-
-
-def test_the_18650_holder_takes_a_terminal_at_each_end(tmp_path):
-    """The real holder: both terminals sit in their slots without interference,
-    each touching the holder, with their bumps' tips one cell length apart."""
-    summary = _summary(build_part(HOLDER / "assembly.py", tmp_path / "out"))
-    assert summary["interference"] == []
-    names = [c["name"] for c in summary["components"]]
-    assert names == ["holder_18650/holder", "holder_18650/terminal_negative",
-                     "holder_18650/terminal_positive"]
-    assert [(c["a"], c["b"]) for c in summary["contacts"]] == [
-        ("holder_18650/holder", "holder_18650/terminal_negative"),
-        ("holder_18650/holder", "holder_18650/terminal_positive")]
-    negative, positive = summary["components"][1:]
-    # each terminal's inner extent is its bump's tip: one 18650 (65 mm) apart
-    assert negative["bounding_box_max"][0] == pytest.approx(-32.5)
-    assert positive["bounding_box_min"][0] == pytest.approx(32.5)
-    # their feet stand on the holder's floor, their tabs above its top
-    assert negative["bounding_box_min"][2] == pytest.approx(1.5)
-    assert negative["bounding_box_max"][2] > summary["components"][0]["bounding_box_max"][2]
 
 
 def test_the_single_18650_holder_cradles_its_cell(tmp_path):

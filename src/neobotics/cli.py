@@ -13,7 +13,7 @@
     # build one catalogue part by its designation: product/assembly/.../part
     neobotics build PB6/chassis/lid
     # or a reusable one in the parts library: library/category/item/...
-    neobotics build library/battery_holders/holder_18650
+    neobotics build library/battery_holders/single_18650_holder
 
     # build every part under products/ and render the catalogue site
     # (what GitHub Pages serves)

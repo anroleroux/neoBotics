@@ -64,7 +64,7 @@ neobotics view results/nema17_bracket/cad/part.stl
 # build one catalogue part by its designation
 neobotics build PB6/chassis/lid
 # or a reusable part or assembly in the parts library
-neobotics build library/battery_holders/holder_18650
+neobotics build library/battery_holders/single_18650_holder
 
 # build every part in the catalogue and the library, and render the site: an
 # overview page, then one page per product, assembly and part with its 3D viewer
@@ -106,10 +106,10 @@ with `load_part("../base")`. See `products/README.md`.
 
 `library/` holds parts and assemblies kept for reuse in any product, filed by
 category: `library/<category>/<item>/`. A category is laid out like a product.
-For example, the 18650 battery holder `battery_holders/holder_18650` is an
-assembly: a holder body and a terminal, with the terminal placed at both ends.
+For example, the 18650 battery holder `battery_holders/single_18650_holder` is an
+assembly: a holder body and its cell, with a battery clip at each end.
 Any script places a library item with
-`load_library("battery_holders/holder_18650")`, from any depth, and reads its
+`load_library("battery_holders/single_18650_holder")`, from any depth, and reads its
 variables as it would with `load_part`. The site has a page for the library,
 and each item's page shows the call that places it and the products that use
 it. See `library/README.md`.
