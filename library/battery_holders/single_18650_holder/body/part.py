@@ -13,7 +13,8 @@ bottom, a triangular extrusion on each side runs the full length: flush with
 the bottom, up the side wall, and down at 45 degrees towards the centre,
 about 1 mm outside the cradles' arcs. Each triangle has an M1.2 threaded
 hole in from both end faces, for the screws of a strip bolted on across the
-end. Change wall and the outside grows with it; the
+end. A filleted cut-out in the top edge of both side walls, symmetric about
+the middle, saves material. Change wall and the outside grows with it; the
 cavity keeps the cell's size, which comes from the battery part, and the
 slots the clip's thickness, so the body follows a change to either.
 
@@ -53,7 +54,12 @@ Assumptions where the description is silent:
   triangle's incentre (1.83 mm from its side, its bottom and its 45 degree
   face), so a 2.3 mm countersunk head (DIN 963) on it stays 0.68 mm inside
   the body's side and bottom;
-- no fillets yet;
+- the side cut-out starts 20 % of the body's overall length in from each
+  end (where the rim starts to curve down), drops to 40 % of the height
+  below the rim, and comes up again; its bottom corners have 4 mm fillets
+  and its top corners, where it meets the rim, 2 mm; it goes through both
+  side walls and stays above the ribs and clear of the end walls;
+- no other fillets;
 - x is the cell's axis, centred on the origin; the body stands on z = 0.
 """
 import math
@@ -82,6 +88,10 @@ notch_depth = 4.0  # from the end walls' tops
 gusset_offset = 1.0  # from the cradles' arcs to the triangles' 45 degree faces
 screw_tap_drill = 0.95  # M1.2 x 0.25
 screw_hole_depth = 5.0  # from each end face, along x
+side_cut_start = 0.20  # of the overall length, in from each end
+side_cut_depth = 0.40  # of the height, down from the rim
+side_cut_bottom_fillet = 4.0
+side_cut_top_fillet = 2.0
 
 inner_length = cell_length + 2 * end_clearance
 inner_width = cell_diameter + 2 * side_clearance
@@ -163,7 +173,30 @@ screw_holes = [
     .extrude(-end * screw_hole_depth)  # into the body from that end
     for end in (1, -1)
 ]
-result = frame.cut(slots).cut(lug_slots).cut(notches).union(ribs.cut(cradle))
+# the side cut-out, in the x-z plane through both side walls: a notch with
+# rounded bottom corners whose top corners round over into the rim
+cut_half = length / 2 - side_cut_start * length  # where the rim starts to curve down
+cut_bottom = height - side_cut_depth * height
+r1, r2 = side_cut_bottom_fillet, side_cut_top_fillet
+a = cut_half - r2  # the notch's straight sides
+k = math.sqrt(0.5)  # cos 45 = sin 45, for the arcs' midpoints
+side_cut = (
+    cq.Workplane("XZ")
+    .moveTo(-cut_half, height)
+    .threePointArc((-cut_half + r2 * k, height - r2 + r2 * k), (-a, height - r2))
+    .lineTo(-a, cut_bottom + r1)
+    .threePointArc((-a + r1 - r1 * k, cut_bottom + r1 - r1 * k), (-a + r1, cut_bottom))
+    .lineTo(a - r1, cut_bottom)
+    .threePointArc((a - r1 + r1 * k, cut_bottom + r1 - r1 * k), (a, cut_bottom + r1))
+    .lineTo(a, height - r2)
+    .threePointArc((cut_half - r2 * k, height - r2 + r2 * k), (cut_half, height))
+    .lineTo(cut_half, height + 1)
+    .lineTo(-cut_half, height + 1)
+    .close()
+    .extrude(width / 2 + 1, both=True)
+)
+result = (frame.cut(slots).cut(lug_slots).cut(notches).cut(side_cut)
+          .union(ribs.cut(cradle)))
 for gusset in gussets:
     result = result.union(gusset)
 for holes in screw_holes:

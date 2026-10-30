@@ -8,3 +8,7 @@ from the very front face to the very end. Their profile is flush with the
 bottom, goes up along the sides, and tapers off at 45 degrees to the bottom
 edge close to the centre; the 45 degree face is about 1 mm outside the arcs
 of the ribs.
+
+A symmetric material-saving cut-out runs along the top edge of both sides:
+it starts about 20 % of the length away from the terminal ends, drops down
+40 % of the height and comes up again, with fillets.
