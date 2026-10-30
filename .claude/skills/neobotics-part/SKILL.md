@@ -112,7 +112,7 @@ library/<category>/<assembly>/<part>/...          its parts
      fit itself (clearance, overlap) in named constants.
 
    Worked examples:
-   - `products/RA6/base/base_plate/part.py`: a standalone part;
+   - `library/fasteners/m1_2x6_countersunk/part.py`: a standalone part;
    - `products/PB6/chassis/lid/part.py`: a part sized from another with
      `load_part`.
 

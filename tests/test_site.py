@@ -55,7 +55,7 @@ def test_discover_walks_the_real_catalogue():
     designations = [e.designation for e in discover(PRODUCTS)]
     assert designations == ["PB6/chassis", "PB6/chassis/base", "PB6/chassis/bms_2s",
                             "PB6/chassis/cn3302_charger", "PB6/chassis/ip6505_charger",
-                            "PB6", "PB6/lid", "RA6/base/base_plate"]
+                            "PB6", "PB6/lid"]
 
 
 def test_discover_follows_sub_assemblies(tmp_path):

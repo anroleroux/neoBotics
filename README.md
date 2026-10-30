@@ -52,7 +52,7 @@ pip install -e ".[dev]"
 export ANTHROPIC_API_KEY=...        # or `ant auth login`
 
 # NL -> B-rep code -> CAD
-neobotics generate --description products/RA6/grippers/jaw/description.md --out results/jaw
+neobotics generate --description products/PB6/chassis/base/description.md --out results/base
 neobotics generate "a 40 x 40 x 5 mm plate with four M3 holes on a 30 mm square" --out results/plate
 
 # only the CAD stage, for a script written or edited by hand (no model, no key)
@@ -87,7 +87,6 @@ Assemblies nest to any depth, and the leaf assemblies hold the parts. Each
 part has its `description.md` and `part.py`. `product.md` and `assembly.md`
 name and describe the levels above.
 
-- **RA6** has the assembly **Base** with the base plate.
 - **PB6** has:
   - the assembly **Chassis**: a base driven by `l`, `b`, `h` and `wall`, its
     charger and BMS boards, and the library's six-cell 18650 pack
@@ -211,7 +210,7 @@ must be set to deploy from GitHub Actions (Settings → Pages → Source).
 
 To generate a design with Claude in CI, add an `ANTHROPIC_API_KEY` repository
 secret and start the workflow by hand with `design` set to a part path such
-as `RA6/grippers/jaw` (see `products/README.md`).
+as `PB6/chassis/base` (see `products/README.md`).
 
 ## Safety
 

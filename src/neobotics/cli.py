@@ -1,7 +1,7 @@
 """Command line: ``neobotics generate | cad | build | view | site``.
 
     # NL -> CadQuery script -> BREP / STEP / STL / PNG, with Claude
-    neobotics generate --description products/RA6/grippers/jaw/description.md --out results/jaw
+    neobotics generate --description products/PB6/chassis/base/description.md --out results/base
     neobotics generate "a 40 x 40 x 5 mm plate with four M3 holes" --out results/plate
 
     # only the CAD stage, for a script written or edited by hand
