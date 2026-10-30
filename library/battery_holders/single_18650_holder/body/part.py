@@ -67,7 +67,7 @@ import math
 import cadquery as cq
 
 cell = load_part("../battery")  # the cell this body holds: diameter, length
-clip = load_library("battery_contacts/keystone_1107_1")  # the terminal: its sheet thickness
+clip = load_library("battery_holders/keystone_1107_1")  # the terminal: its sheet thickness
 
 # parameters, in mm
 wall = 1.0  # side and end walls

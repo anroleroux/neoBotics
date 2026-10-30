@@ -1,7 +1,7 @@
 """Command line: ``neobotics generate | cad | build | view | site``.
 
     # NL -> CadQuery script -> BREP / STEP / STL / PNG, with Claude
-    neobotics generate --description products/RA6/grippers/jaw/description.md --out results/jaw
+    neobotics generate --description products/PB6/chassis/base/description.md --out results/base
     neobotics generate "a 40 x 40 x 5 mm plate with four M3 holes" --out results/plate
 
     # only the CAD stage, for a script written or edited by hand
@@ -11,9 +11,9 @@
     neobotics view results/nema17_bracket/cad/part.stl
 
     # build one catalogue part by its designation: product/assembly/.../part
-    neobotics build PB4/chassis/lid
+    neobotics build PB6/chassis/lid
     # or a reusable one in the parts library: library/category/item/...
-    neobotics build library/battery_holders/holder_18650
+    neobotics build library/battery_holders/single_18650_holder
 
     # build every part under products/ and render the catalogue site
     # (what GitHub Pages serves)
@@ -64,7 +64,7 @@ def main(argv: list[str] | None = None) -> int:
     p_view.add_argument("--view", default="iso")
 
     p_build = sub.add_parser("build", help="build one catalogue part by its designation, "
-                                           "e.g. PB4/chassis/lid")
+                                           "e.g. PB6/chassis/lid")
     p_build.add_argument("designation", help="<product>/<assembly>/.../<part>, or "
                                              "library/<category>/<item>/...")
     p_build.add_argument("--root", type=Path, default=Path("products"),

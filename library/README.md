@@ -1,8 +1,9 @@
 # Parts library
 
 Parts and assemblies kept for reuse in any product, filed by category. A
-battery holder, for example, is the assembly `battery_holders/holder_18650`:
-a holder body and a terminal, with the terminal placed at both ends.
+battery holder, for example, is the assembly `battery_holders/single_18650_holder`:
+a holder body and its cell, with a battery clip
+(`battery_holders/keystone_1107_1`) at each end.
 
 ```
 library/<category>/category.md                     "# Title", then a blurb
@@ -23,8 +24,8 @@ Every part and assembly script has `load_library`. It takes the item's
 designation in the library, from any depth:
 
 ```python
-holder = load_library("battery_holders/holder_18650")   # the assembly: holder.result is a cq.Assembly
-body = load_library("battery_holders/holder_18650/holder")  # one part: body.length, body.axis_height, ...
+holder = load_library("battery_holders/single_18650_holder")   # the assembly: holder.result is a cq.Assembly
+body = load_library("battery_holders/single_18650_holder/body")  # one part: body.length, body.width, ...
 
 result = (
     cq.Assembly(name="power")
@@ -34,8 +35,8 @@ result = (
 ```
 
 It returns the item's variables, like `load_part`. So a product can size a
-mounting boss or pocket from the holder's `length`, `width` or
-`hole_spacing`, and the product follows when the library item changes.
+mounting boss or pocket from the body's `length`, `width` or
+`height`, and the product follows when the library item changes.
 
 `load_library` looks for the `library/` directory nearest above the calling
 script. Set `NEOBOTICS_LIBRARY` to use a library kept somewhere else.
@@ -43,8 +44,8 @@ script. Set `NEOBOTICS_LIBRARY` to use a library kept somewhere else.
 ## Building
 
 ```bash
-neobotics build library/battery_holders/holder_18650          # the assembled model
-neobotics build library/battery_holders/holder_18650/terminal # one part
+neobotics build library/battery_holders/single_18650_holder          # the assembled model
+neobotics build library/battery_holders/single_18650_holder/body     # one part
 neobotics site products --out results --site site             # products and library
 ```
 

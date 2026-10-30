@@ -1,4 +1,4 @@
-"""PB4 lid.
+"""PB6 lid.
 
 A cover that sits on the rim of the base box and wraps down its two long
 sides: a top plate with a skirt down each side, past the box's breadth by the

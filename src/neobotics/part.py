@@ -20,7 +20,7 @@ Two names are provided to every script:
   load_library(designation)
                    the same for a reusable part or assembly in the parts
                    library, by its designation there
-                   (``load_library("battery_holders/holder_18650")``), from any
+                   (``load_library("battery_holders/single_18650_holder")``), from any
                    script at any depth.  The library is the ``library/``
                    directory nearest above the calling script, or the one the
                    ``NEOBOTICS_LIBRARY`` environment variable names.

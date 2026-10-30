@@ -52,7 +52,7 @@ pip install -e ".[dev]"
 export ANTHROPIC_API_KEY=...        # or `ant auth login`
 
 # NL -> B-rep code -> CAD
-neobotics generate --description products/RA6/grippers/jaw/description.md --out results/jaw
+neobotics generate --description products/PB6/chassis/base/description.md --out results/base
 neobotics generate "a 40 x 40 x 5 mm plate with four M3 holes on a 30 mm square" --out results/plate
 
 # only the CAD stage, for a script written or edited by hand (no model, no key)
@@ -62,9 +62,9 @@ neobotics cad tests/fixtures/nema17_bracket/part.py --out results/nema17_bracket
 neobotics view results/nema17_bracket/cad/part.stl
 
 # build one catalogue part by its designation
-neobotics build PB4/chassis/lid
+neobotics build PB6/chassis/lid
 # or a reusable part or assembly in the parts library
-neobotics build library/battery_holders/holder_18650
+neobotics build library/battery_holders/single_18650_holder
 
 # build every part in the catalogue and the library, and render the site: an
 # overview page, then one page per product, assembly and part with its 3D viewer
@@ -87,28 +87,28 @@ Assemblies nest to any depth, and the leaf assemblies hold the parts. Each
 part has its `description.md` and `part.py`. `product.md` and `assembly.md`
 name and describe the levels above.
 
-- **RA6** has the assembly **Base** with the base plate.
-- **PB4** has:
-  - the assembly **Chassis**: a base driven by `l`, `b`, `h` and `wall`, and an
-    18650 cell. The chassis `assembly.py` lays four cells along x against the
-    back wall.
+- **PB6** has:
+  - the assembly **Chassis**: a base driven by `l`, `b`, `h` and `wall`, its
+    charger and BMS boards, and the library's six-cell 18650 pack
+    (`battery_holders/pack_3x2`), which the chassis `assembly.py` sets on the
+    floor against the back wall.
   - its own part, the **lid**, sized from the base.
 
-  `PB4/assembly.py` seats the lid on the chassis, and the build checks the fit.
+  `PB6/assembly.py` seats the lid on the chassis, and the build checks the fit.
 
-A part's designation is its path (`PB4/chassis/lid`).
+A part's designation is its path (`PB6/chassis/lid`).
 `neobotics build <designation>` builds just that part, or an assembly's
-assembled model (`PB4/chassis`). A script can read another part's variables
+assembled model (`PB6/chassis`). A script can read another part's variables
 with `load_part("../base")`. See `products/README.md`.
 
 ### The parts library
 
 `library/` holds parts and assemblies kept for reuse in any product, filed by
 category: `library/<category>/<item>/`. A category is laid out like a product.
-For example, the 18650 battery holder `battery_holders/holder_18650` is an
-assembly: a holder body and a terminal, with the terminal placed at both ends.
+For example, the 18650 battery holder `battery_holders/single_18650_holder` is an
+assembly: a holder body and its cell, with a battery clip at each end.
 Any script places a library item with
-`load_library("battery_holders/holder_18650")`, from any depth, and reads its
+`load_library("battery_holders/single_18650_holder")`, from any depth, and reads its
 variables as it would with `load_part`. The site has a page for the library,
 and each item's page shows the call that places it and the products that use
 it. See `library/README.md`.
@@ -210,7 +210,7 @@ must be set to deploy from GitHub Actions (Settings → Pages → Source).
 
 To generate a design with Claude in CI, add an `ANTHROPIC_API_KEY` repository
 secret and start the workflow by hand with `design` set to a part path such
-as `RA6/grippers/jaw` (see `products/README.md`).
+as `PB6/chassis/base` (see `products/README.md`).
 
 ## Safety
 

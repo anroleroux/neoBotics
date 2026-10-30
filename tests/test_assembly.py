@@ -14,7 +14,7 @@ from neobotics.cli import main as cli_main
 from neobotics.part import build_part
 
 PRODUCTS = Path(__file__).resolve().parents[1] / "products"
-CHASSIS = PRODUCTS / "PB4" / "chassis"
+CHASSIS = PRODUCTS / "PB6" / "chassis"
 
 BOX = """\
 \"\"\"Box.\"\"\"
@@ -99,29 +99,25 @@ def test_catalog_finds_assembly_models(tmp_path):
     assert find(root, "P1/stack").out_dir(tmp_path / "r") == tmp_path / "r/P1/stack/_assembly"
 
 
-def test_the_pb4_chassis_carries_four_cells_against_the_back_wall(tmp_path):
-    """The real chassis: four 18650 cells on the floor, along x, each against the
-    back (-x) wall, none overlapping; the two at -y are turned round, so they
-    touch that wall with their positive buttons, not their negative ends."""
+def test_the_pb6_chassis_carries_the_six_cell_pack_against_the_back_wall(tmp_path):
+    """The real chassis: the six-cell pack from the library on the floor, its
+    back end against the back (-x) wall, centred across the breadth, clear of
+    the mini wall; no loose cells and no battery ribs any more."""
     summary = _summary(build_part(CHASSIS / "assembly.py", tmp_path / "out"))
     base = _summary(build_part(CHASSIS / "base" / "part.py", tmp_path / "base"))
     assert summary["interference"] == []
-    cells = [c for c in summary["components"] if "battery" in c["name"]]
-    assert len(cells) == 4
+    names = [c["name"] for c in summary["components"]]
+    assert not [n for n in names if "battery" in n]
+    (pack,) = [c for c in summary["components"] if c["name"].endswith("pack_3x2")]
     l, wall = base["bounding_box"]["size"][0], 3.0
-    for cell in cells:
-        assert cell["bounding_box_min"][0] == pytest.approx(-l / 2 + wall)  # against the back wall
-        assert cell["bounding_box_max"][0] - cell["bounding_box_min"][0] == pytest.approx(65.0)
-        assert cell["bounding_box_min"][2] == pytest.approx(wall)  # on the floor
-    # battery_1 and battery_2 touch the base over their 7 mm buttons, the others
-    # over their negative ends; all are the same faded pink
-    cell_contacts = [c for c in summary["contacts"] if "battery" in c["b"]]
-    assert [c["area_mm2"] for c in cell_contacts] == pytest.approx(
-        [math.pi * 3.5 ** 2] * 2 + [math.pi * 9.2 ** 2] * 2)
-    assert {c["meshes"][0]["color"] for c in cells} == {"#edbac9"}
+    assert pack["bounding_box_min"][0] == pytest.approx(-l / 2 + wall)  # against the back wall
+    assert pack["bounding_box_min"][2] == pytest.approx(wall)  # on the floor
+    assert pack["bounding_box_min"][1] == pytest.approx(-pack["bounding_box_max"][1])  # centred
+    assert len([m for m in pack["meshes"] if m["name"].endswith("/battery")]) == 6
+    assert base["regions"]["mini_wall_top"]["count"] == 1
 
 
-def test_the_pb4_chargers_sit_behind_their_plug_holes(tmp_path):
+def test_the_pb6_chargers_sit_behind_their_plug_holes(tmp_path):
     """The two IP6505 boards and the CN3302 board stand on the floor with their
     USB mouths against the inside of the front wall, each behind its own plug hole."""
     summary = _summary(build_part(CHASSIS / "assembly.py", tmp_path / "out"))
@@ -136,13 +132,14 @@ def test_the_pb4_chargers_sit_behind_their_plug_holes(tmp_path):
     assert summary["interference"] == []
 
 
-def test_the_pb4_bms_stands_against_the_mini_wall(tmp_path):
+def test_the_pb6_bms_stands_against_the_mini_wall(tmp_path):
     """The 2S BMS stands on edge on the floor, its back on the front mini wall's
     front face, its length across the breadth and its parts facing the front."""
     summary = _summary(build_part(CHASSIS / "assembly.py", tmp_path / "out"))
     (bms,) = [c for c in summary["components"] if c["name"].endswith("bms_2s")]
     lo, hi = bms["bounding_box_min"], bms["bounding_box_max"]
-    mini_wall_front = -60.0 + 3.0 + 65.0 + 1.0 + 2.0  # back wall inside, a cell, the gap, the wall
+    (pack,) = [c for c in summary["components"] if c["name"].endswith("pack_3x2")]
+    mini_wall_front = pack["bounding_box_max"][0] + 1.0 + 2.0  # the pack's front, the gap, the wall
     assert lo[0] == pytest.approx(mini_wall_front) and hi[0] - lo[0] == pytest.approx(2.6)
     assert hi[1] - lo[1] == pytest.approx(38.0) and hi[2] - lo[2] == pytest.approx(8.0)
     assert lo[2] == pytest.approx(3.0)  # on the floor
@@ -167,22 +164,22 @@ def test_components_keep_the_colour_they_were_added_with(tmp_path):
 
 
 def test_the_product_model_lists_only_what_it_holds_directly(tmp_path):
-    """PB4's model holds the chassis (a sub-assembly) and the lid: those are its
+    """PB6's model holds the chassis (a sub-assembly) and the lid: those are its
     two components, the chassis one for all its parts; every part is still
     drawn, in its own mesh and colour, inside the chassis."""
-    summary = _summary(build_part(PRODUCTS / "PB4" / "assembly.py", tmp_path / "out"))
-    assert [c["name"] for c in summary["components"]] == ["PB4/chassis", "PB4/lid"]
+    summary = _summary(build_part(PRODUCTS / "PB6" / "assembly.py", tmp_path / "out"))
+    assert [c["name"] for c in summary["components"]] == ["PB6/chassis", "PB6/lid"]
     chassis, lid = summary["components"]
-    assert "PB4/chassis/bms_2s" in [m["name"] for m in chassis["meshes"]]
+    assert "PB6/chassis/bms_2s" in [m["name"] for m in chassis["meshes"]]
     assert len(chassis["meshes"]) > 1 and len(lid["meshes"]) == 1
-    assert all(c["a"] == "PB4/chassis" and c["b"] == "PB4/lid" for c in summary["contacts"])
+    assert all(c["a"] == "PB6/chassis" and c["b"] == "PB6/lid" for c in summary["contacts"])
 
 
-def test_the_pb4_lid_fits_the_base(tmp_path):
+def test_the_pb6_lid_fits_the_base(tmp_path):
     """The product model: the lid sits on the end walls' rims (+-x), its skirts
     close the open long sides (+-y), and its lips stay clear of the end walls
-    and of the cells."""
-    summary = _summary(build_part(PRODUCTS / "PB4" / "assembly.py", tmp_path / "out"))
+    and of the battery pack."""
+    summary = _summary(build_part(PRODUCTS / "PB6" / "assembly.py", tmp_path / "out"))
     box = _summary(build_part(CHASSIS / "base" / "part.py", tmp_path / "box"))
     assert summary["interference"] == []
     (lid,) = [c for c in summary["contacts"] if c["b"].endswith("/lid")]
@@ -190,9 +187,8 @@ def test_the_pb4_lid_fits_the_base(tmp_path):
     wall = 3.0
     rims = 2 * b * wall  # the two end walls' tops
     sides = 2 * (l * wall + 2 * wall * (h - wall))  # the floor's and end walls' edges at +-y
-    retainers = 2 * (65.0 + 1.0 + 2.0) * 12.0  # the side retainers' and front mini wall's
-    # outer faces, flush at +-y: a cell length, the 1 mm gap and the 2 mm wall, 12 mm tall
-    assert lid["a"] == "PB4/chassis" and lid["area_mm2"] == pytest.approx(rims + sides + retainers)
+    mini_wall = 2 * 2.0 * 12.0  # the front mini wall's ends, flush at +-y: 2 mm thick, 12 mm tall
+    assert lid["a"] == "PB6/chassis" and lid["area_mm2"] == pytest.approx(rims + sides + mini_wall)
     # the lid overhangs a = 5 mm at each end, adds its thickness each side and on top,
     # and reaches the base's bottom
     assert summary["bounding_box"]["size"] == pytest.approx([l + 10, b + 2 * wall, h + wall])
@@ -200,9 +196,9 @@ def test_the_pb4_lid_fits_the_base(tmp_path):
 
 
 def test_build_command_takes_an_assembly_designation(tmp_path, capsys):
-    assert cli_main(["build", "PB4/chassis", "--out", str(tmp_path)]) == 0
-    assert (tmp_path / "PB4/chassis/_assembly/cad/part.step").exists()
-    assert "built PB4/chassis" in capsys.readouterr().out
+    assert cli_main(["build", "PB6/chassis", "--out", str(tmp_path)]) == 0
+    assert (tmp_path / "PB6/chassis/_assembly/cad/part.step").exists()
+    assert "built PB6/chassis" in capsys.readouterr().out
 
 
 def test_site_shows_the_assembled_model_with_its_fit(tmp_path):
