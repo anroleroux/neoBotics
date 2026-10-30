@@ -16,6 +16,10 @@ The site is one page per level, and each page shows only what is in it:
       products/<product>/.../_assembly/             an assembled model's files
       products/<product>/.../<part>/index.html      a part: 3D view, description,
                                                     measurements, downloads, script
+      library/index.html                            the parts library: a card per category
+      library/<category>/...                        laid out like a product; each item's
+                                                    page says how to place it, and where
+                                                    it is used
 
 Cards drill down a level; a breadcrumb on every page leads back up, and all
 links are relative, so the site works from any base URL — a GitHub Pages
@@ -47,6 +51,8 @@ SCRIPT_NOTE = "the CadQuery script (B-rep code)"
 #: Where an assembly's model is published, inside its directory (catalog.ASSEMBLY_DIR).
 ASSEMBLY_DIR = "_assembly"
 IMAGES = ["part.png", "part_rear_below.png"]
+#: The parts library's section of the site (catalog.LIBRARY).
+LIBRARY = "library"
 
 
 @dataclass
@@ -60,6 +66,7 @@ class Part:
     summary: dict
     cad_dir: Path
     script_name: str = "part.py"
+    used_in: list[str] = field(default_factory=list)  # a library part: who places it
 
 
 @dataclass
@@ -73,6 +80,7 @@ class Assembly:
     assemblies: list["Assembly"] = field(default_factory=list)
     parts: list[Part] = field(default_factory=list)
     model: Part | None = None  # the assembled model, from assembly.py
+    used_in: list[str] = field(default_factory=list)  # a library item: who places it
 
     @property
     def n_parts(self) -> int:
@@ -82,7 +90,14 @@ class Assembly:
 @dataclass
 class Product(Assembly):
     """A product: the top of the breakdown.  Like an assembly, but it may hold
-    assemblies and parts of its own side by side."""
+    assemblies and parts of its own side by side.  A parts library category
+    is one too, with ``section`` "library"."""
+
+    section: str = "products"
+
+    @property
+    def in_library(self) -> bool:
+        return self.section == LIBRARY
 
     def chains(self) -> Iterator[tuple[Assembly, ...]]:
         """Every assembly, as the chain from the top-level one down to it."""
@@ -154,7 +169,7 @@ def designation(product: Product, chain: tuple[Assembly, ...], part: Part | None
 def product_dir(product: Product) -> str:
     """Where a product's page lives, relative to the site root; everything in
     it sits below, one directory per level."""
-    return f"products/{product.slug}"
+    return f"{product.section}/{product.slug}"
 
 
 def node_dir(product: Product, chain: tuple[Assembly, ...]) -> Path:
@@ -166,7 +181,8 @@ def _check_unique(products: list[Product]) -> None:
         if len(set(slugs)) != len(slugs):
             raise ValueError(f"{kind} names must be unique, got {slugs}")
 
-    check("product", [p.slug for p in products])
+    check("product", [p.slug for p in products if not p.in_library])
+    check("library category", [p.slug for p in products if p.in_library])
     for p in products:
         for chain in p.nodes():
             node = p.node(chain)
@@ -192,6 +208,10 @@ def build_site(products: list[Product], site_dir: Path) -> Path:
             for part in node.parts:
                 _copy(part, here / part.name)
                 (here / part.name / "index.html").write_text(render_part(product, chain, part))
+    categories = [p for p in products if p.in_library]
+    if categories:
+        (site_dir / LIBRARY).mkdir(parents=True, exist_ok=True)
+        (site_dir / LIBRARY / "index.html").write_text(render_library(categories))
     index = site_dir / "index.html"
     index.write_text(render_overview(products))
     (site_dir / ".nojekyll").write_text("")
@@ -379,9 +399,12 @@ def _contents(product: Product, chain: tuple[Assembly, ...]) -> str:
 
 def _breadcrumb(product: Product, chain: tuple[Assembly, ...], root: str,
                 current: str | None) -> str:
-    """neoBotics products › PB4 › Chassis › … — every level a link but the page itself."""
-    levels = [("neoBotics products", f"{root}index.html"),
-              (product.title, f"{root}{product_dir(product)}/index.html")]
+    """neoBotics › PB4 › Chassis › … (neoBotics › Parts library › Battery holders
+    › … in the library) — every level a link but the page itself."""
+    levels = [("neoBotics", f"{root}index.html")]
+    if product.in_library:
+        levels.append(("Parts library", f"{root}{LIBRARY}/index.html"))
+    levels.append((product.title, f"{root}{product_dir(product)}/index.html"))
     for depth, a in enumerate(chain, start=1):
         path = node_dir(product, chain[:depth]).as_posix()
         levels.append((a.title, f"{root}{path}/index.html"))
@@ -392,6 +415,26 @@ def _breadcrumb(product: Product, chain: tuple[Assembly, ...], root: str,
     items = "".join(f'<li><a href="{_e(href)}">{_e(title)}</a></li>' for title, href in links)
     return (f"<nav class=crumbs-bar aria-label=Breadcrumb><ol>{items}"
             f"<li aria-current=page>{_e(here)}</li></ol></nav>")
+
+
+def _library_use(product: Product, chain: tuple[Assembly, ...], root: str,
+                 part: Part | None = None) -> str:
+    """For a library item: the call that places it, and the scripts that do."""
+    if not product.in_library:
+        return ""
+    item = part or product.node(chain)
+    call = f'load_library("{designation(product, chain, part)}")'
+    if item.used_in:
+        links = "".join(
+            f'<li><a href="{_e(root)}{"" if a.startswith(LIBRARY + "/") else "products/"}'
+            f'{_e(a)}/index.html"><code>{_e(a)}</code></a></li>' for a in item.used_in)
+        users = f"<ul class=used-list>{links}</ul>"
+    else:
+        users = "<p class=muted>Not placed in any product yet.</p>"
+    return (f"<section class=reuse><h2>Reuse</h2>"
+            f"<p>Place it from any part or assembly script:</p>"
+            f"<pre><code>{_e(call)}</code></pre>"
+            f"<h3>Used in</h3>{users}</section>")
 
 
 def _up(title: str, href: str) -> str:
@@ -446,8 +489,12 @@ def render_node(product: Product, chain: tuple[Assembly, ...] = ()) -> str:
     if chain:
         kind = "Assembly" if len(chain) == 1 else "Sub-assembly"
         parent_title = product.node(chain[:-1]).title
+    elif product.in_library:
+        kind, parent_title = "Category", "the parts library"
     else:
         kind, parent_title = "Product", "all products"
+    if product.in_library and chain:
+        kind = f"Library {kind.lower()}"
     model = ""
     if node.model:
         model = (f'<h2 class=section-title>Assembled model '
@@ -464,6 +511,7 @@ def render_node(product: Product, chain: tuple[Assembly, ...] = ()) -> str:
   </div>
 </header>
 <main class=wrap>
+  {_library_use(product, chain, root) if chain else ""}
   {_contents(product, chain)}
   {model}
   {_up(parent_title, '../index.html')}
@@ -479,30 +527,67 @@ def render_part(product: Product, chain: tuple[Assembly, ...], part: Part) -> st
     body = f"""<header class="site-head compact">
   <div class=wrap>
     {_breadcrumb(product, chain, root, part.title)}
-    <p class=eyebrow>Part <code>{_e(designation(product, chain, part))}</code></p>
+    <p class=eyebrow>{"Library part" if product.in_library else "Part"} <code>{_e(designation(product, chain, part))}</code></p>
     <h1 class=product-title>{_e(part.title)}</h1>
     <p class=count>{_e(_size(part.summary))}</p>
   </div>
 </header>
 <main class=wrap>
   {_detail(part, "")}
+  {_library_use(product, chain, root, part)}
   {_up(parent.title, '../index.html')}
 </main>"""
     return _page(f"{part.title} · neoBotics", f"{part.title}: built as CadQuery B-rep code.",
                  body, viewer=True)
 
 
-def _product_card(product: Product) -> str:
+def _product_card(product: Product, base: str = "") -> str:
+    """A card for a product or a library category; ``base`` is the site root
+    relative to the page."""
     thumb = _thumb(product)
-    return _card(f"{product_dir(product)}/index.html",
-                 f"{product_dir(product)}/{thumb}" if thumb else "", "Product",
+    href = f"{base}{product_dir(product)}"
+    return _card(f"{href}/index.html", f"{href}/{thumb}" if thumb else "",
+                 "Category" if product.in_library else "Product",
                  product.title, product.slug, _counts(product))
 
 
+def _library_section(categories: list[Product], base: str = "") -> str:
+    cards = "".join(_product_card(c, base) for c in categories)
+    n_parts = sum(c.n_parts for c in categories)
+    return f"""<section class=contents>
+    <h2>Parts library <span class=count>{_plural(len(categories), 'category', 'categories')} · {_plural(n_parts, 'part')}</span></h2>
+    <p class=muted>Parts and assemblies kept for reuse: a product places one with <code>load_library("&lt;category&gt;/&lt;item&gt;")</code>.</p>
+    <ul class=item-grid>{cards}</ul>
+  </section>"""
+
+
+def render_library(categories: list[Product]) -> str:
+    """The parts library's own page: a card per category."""
+    body = f"""<header class="site-head compact">
+  <div class=wrap>
+    <nav class=crumbs-bar aria-label=Breadcrumb><ol><li><a href="../index.html">neoBotics</a></li><li aria-current=page>Parts library</li></ol></nav>
+    <p class=eyebrow>Library</p>
+    <h1 class=product-title>Parts library</h1>
+    <p>Reusable parts and assemblies, filed by category. Each is built and checked like any
+    product part, and any product can place it with <code>load_library</code>.</p>
+  </div>
+</header>
+<main class=wrap>
+  {_library_section(categories, "../")}
+  {_up("all products", "../index.html")}
+</main>"""
+    return _page("Parts library · neoBotics", "Reusable parts and assemblies, by category, "
+                 "built as CadQuery B-rep code.", body, viewer=False)
+
+
 def render_overview(products: list[Product]) -> str:
-    """The landing page: what the pipeline does, then a card per product."""
+    """The landing page: what the pipeline does, then a card per product, then
+    the parts library's categories."""
+    categories = [p for p in products if p.in_library]
+    products = [p for p in products if not p.in_library]
     cards = "".join(_product_card(p) for p in products)
     n_parts = sum(p.n_parts for p in products)
+    library = _library_section(categories) if categories else ""
     body = f"""<header class=site-head>
   <div class=wrap>
     <h1>neoBotics</h1>
@@ -520,6 +605,7 @@ def render_overview(products: list[Product]) -> str:
     <h2>Products <span class=count>{_plural(len(products), 'product')} · {_plural(n_parts, 'part')}</span></h2>
     <ul class=item-grid>{cards}</ul>
   </section>
+  {library}
 </main>"""
     return _page("neoBotics products", "Products, their assemblies and parts, built from "
                  "natural-language descriptions as CadQuery B-rep code.", body, viewer=False)
@@ -558,6 +644,7 @@ aspect-ratio:2/3;max-height:calc(100vh - 32px);display:flex;flex-direction:colum
 .viewer.live .fallback{display:none}
 .viewer figcaption{font-size:.8rem;color:var(--muted);padding:6px 10px;border-top:1px solid var(--line)}
 .viewer button{font:inherit;color:var(--accent);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline}
+.viewer figcaption .axes[aria-pressed=false]{color:var(--muted);text-decoration:line-through}
 .viewer .section{display:flex;align-items:center;gap:6px;padding:6px 10px;border-top:1px solid var(--line);
 font-size:.8rem;color:var(--muted)}
 .viewer .section .axis{text-decoration:none;padding:1px 6px;border:1px solid var(--line);border-radius:4px}
@@ -693,6 +780,13 @@ overflow:hidden;background:var(--panel);text-decoration:none;color:var(--ink)}
 .fit-list .clash::before{content:"✕ ";color:#c0392b;font-weight:700}
 .fit-list .touch::before{content:"⇵ ";color:var(--muted)}
 .fit-list li+li{margin-top:6px}
+.reuse{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin:24px 0;padding:16px 20px}
+.reuse h2{font-size:1.1rem;margin:0 0 6px}
+.reuse h3{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:14px 0 6px}
+.reuse p{margin:0}
+.used-list{list-style:none;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:6px}
+.used-list a{display:inline-block;padding:3px 10px;border:1px solid var(--line);border-radius:999px;text-decoration:none}
+.used-list a:hover{border-color:var(--accent)}
 """
 
 _JS = """
@@ -710,6 +804,63 @@ const SEE_THROUGH = 0.22;  // a see-through component's opacity
 const HALF_DISC = '<svg width=12 height=12 viewBox="0 0 12 12" aria-hidden=true style="vertical-align:-1px">' +
   '<circle cx=6 cy=6 r=5 fill=none stroke=currentColor stroke-width=1.4 />' +
   '<path d="M6 1a5 5 0 0 1 0 10z" fill=currentColor /></svg>';
+
+// coordinate crosshairs: a line along each axis through the model's origin
+// (x red, y green, z blue), solid on the positive side and dashed on the
+// negative, past the model by a margin, each lettered at its positive end; drawn
+// over the model so they show through it.  The model was moved by -centre.
+const AXIS_COLORS = {x: 0xd64545, y: 0x3e9c4f, z: 0x3d6fd6};
+function crosshairs(box, centre, radius) {
+  const group = new THREE.Group();
+  const margin = radius * 0.15;
+  const dirs = {x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1)};
+  const origin = centre.clone().negate();  // the model's (0, 0, 0) in the scene
+  const line = (from, to, material) => {
+    const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([from, to]), material);
+    l.computeLineDistances();
+    l.renderOrder = 10;
+    return l;
+  };
+  for (const [axis, dir] of Object.entries(dirs)) {
+    const color = AXIS_COLORS[axis];
+    const lo = Math.min(box.min[axis], 0) - margin, hi = Math.max(box.max[axis], 0) + margin;
+    const at = (v) => origin.clone().addScaledVector(dir, v);
+    const style = {color, depthTest: false, transparent: true, opacity: 0.9};
+    group.add(line(at(0), at(hi), new THREE.LineBasicMaterial(style)));
+    group.add(line(at(lo), at(0), new THREE.LineDashedMaterial(
+      {...style, opacity: 0.6, dashSize: radius * 0.04, gapSize: radius * 0.03})));
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 64;
+    const ctx = canvas.getContext("2d");
+    ctx.font = "bold 44px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#" + color.toString(16).padStart(6, "0");
+    ctx.fillText(axis, 32, 34);
+    const label = new THREE.Sprite(new THREE.SpriteMaterial(
+      {map: new THREE.CanvasTexture(canvas), depthTest: false, transparent: true}));
+    label.position.copy(at(hi + margin * 0.35));
+    label.scale.setScalar(radius * 0.09);
+    label.renderOrder = 11;
+    group.add(label);
+  }
+  return group;
+}
+
+// a toggle for the crosshairs, after "reset view" in the caption
+function axesToggle(figure, group) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "axes";
+  button.textContent = "axes";
+  button.title = "show or hide the coordinate crosshairs";
+  button.setAttribute("aria-pressed", "true");
+  button.addEventListener("click", () => {
+    group.visible = !group.visible;
+    button.setAttribute("aria-pressed", String(group.visible));
+  });
+  figure.querySelector("figcaption").append(" · ", button);
+}
 
 // a section view: pick an axis, then slide the cutting plane along it; the
 // part on the far side of the plane is cut away (flip keeps the other side)
@@ -847,6 +998,8 @@ function mount(figure) {
       return {mesh, edges, material};
     });
     const materials = parts.map((p) => p.material);
+    const axes = crosshairs(box, centre, radius);
+    scene.add(axes);
     scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.4));
     const sun = new THREE.DirectionalLight(0xffffff, 1.6);
     sun.position.set(1, -1.4, 2);
@@ -860,6 +1013,7 @@ function mount(figure) {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     figure.insertBefore(renderer.domElement, figure.firstChild);
     figure.classList.add("live");
+    axesToggle(figure, axes);
     section(figure, parts, box.getSize(new THREE.Vector3()), renderer);
     const groups = figure.dataset.groups ? figure.dataset.groups.split(" ").map(Number) : null;
     layers(figure, parts, groups, names && groups && groups.length === parts.length ? names : null);

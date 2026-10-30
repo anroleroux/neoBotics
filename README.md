@@ -63,9 +63,11 @@ neobotics view results/nema17_bracket/cad/part.stl
 
 # build one catalogue part by its designation
 neobotics build PB4/chassis/lid
+# or a reusable part or assembly in the parts library
+neobotics build library/battery_holders/holder_18650
 
-# build every part in the catalogue and render the site: an overview page,
-# then one page per product with its assembly tree and each part's 3D viewer
+# build every part in the catalogue and the library, and render the site: an
+# overview page, then one page per product, assembly and part with its 3D viewer
 neobotics site products --out results --site site
 ```
 
@@ -98,6 +100,18 @@ A part's designation is its path (`PB4/chassis/lid`).
 `neobotics build <designation>` builds just that part, or an assembly's
 assembled model (`PB4/chassis`). A script can read another part's variables
 with `load_part("../base")`. See `products/README.md`.
+
+### The parts library
+
+`library/` holds parts and assemblies kept for reuse in any product, filed by
+category: `library/<category>/<item>/`. A category is laid out like a product.
+For example, the 18650 battery holder `battery_holders/holder_18650` is an
+assembly: a holder body and a terminal, with the terminal placed at both ends.
+Any script places a library item with
+`load_library("battery_holders/holder_18650")`, from any depth, and reads its
+variables as it would with `load_part`. The site has a page for the library,
+and each item's page shows the call that places it and the products that use
+it. See `library/README.md`.
 
 In a Claude Code session, the `neobotics-part` skill
 (`.claude/skills/neobotics-part/SKILL.md`) takes a designation plus modelling
@@ -158,7 +172,7 @@ same names can carry an assembly's mates or a study's loads.
 | `neobotics.cadview` | headless shaded rendering (numpy z-buffer, no OpenGL), adapted from topocombo's `cadview` |
 | `neobotics.pipeline` | lays out a run directory around the two stages |
 | `neobotics.site` | the static page: an interactive three.js view of each part's STL, its description, measurements, script and downloads |
-| `neobotics.catalog` | reads the `products/` breakdown (assemblies to any depth), builds every part, renders the site |
+| `neobotics.catalog` | reads the `products/` breakdown (assemblies to any depth) and the `library/`, builds every part, renders the site |
 | `neobotics.cli` | `neobotics generate / cad / build / view / site` |
 
 The model sits behind a small `Coder` interface (`(system, messages) ->
@@ -170,8 +184,8 @@ real CadQuery builds, with no network.
 `.github/workflows/cad.yml` runs on every push and pull request:
 
 1. it runs the tests;
-2. `neobotics site` builds every part under `products/` and renders the
-   pages; a part that fails to build fails the job;
+2. `neobotics site` builds every part under `products/` and `library/` and
+   renders the pages; a part that fails to build fails the job;
 3. it uploads the CAD files as the `parts` artifact.
 
 On a push, it also deploys the site to GitHub Pages:
@@ -185,6 +199,10 @@ On a push, it also deploys the site to GitHub Pages:
 - one page per part: its designation, a 3D view you can orbit, cut with a
   section slider and make see-through, the
   description, measurements, and STEP / STL / BREP / script downloads.
+
+Every 3D view draws coordinate crosshairs through the model's origin: x red,
+y green, z blue, dashed on the negative side. The "axes" button in the
+caption hides them.
 
 Every page leads back up through a breadcrumb and a "Back to …" link. Links are
 relative, so the site also works opened from a local folder. Pages

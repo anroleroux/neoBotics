@@ -34,6 +34,30 @@ products/<PRODUCT>/<assembly>/assembly.py                 optional: the assemble
 - `neobotics site` refuses a breakdown that breaks these rules, and names the
   offending directory.
 
+## The parts library
+
+```
+library/<category>/category.md                    "# Title" + blurb
+library/<category>/<part>/...                     a reusable part
+library/<category>/<assembly>/assembly.md         a reusable assembly (holder + terminal)
+library/<category>/<assembly>/assembly.py         optional: its assembled model
+library/<category>/<assembly>/<part>/...          its parts
+```
+
+- Put a part or assembly in the library when the user says it is for reuse,
+  names a category ("a battery holder in the battery holders category"), or
+  says "library/…". A product-specific part stays in `products/`.
+- A category follows a product's rules: it holds parts and assemblies. Its
+  slug is lowercase with underscores and plural (`battery_holders`,
+  `motor_mounts`). Write its `category.md` when it is new.
+- Its designation for `neobotics build` is `library/<category>/<item>/...`.
+  Scripts place it with `load_library("<category>/<item>")`, which takes the
+  same path without `library/` and works from any depth. Use it in products
+  rather than copying a library part.
+- Inside a library assembly, parts use `load_part` on each other as usual
+  (the terminal sizes itself from `../holder`).
+- Worked example: `library/battery_holders/holder_18650/`.
+
 ## Steps
 
 0. **Set up, once per session**: `pip install -e ".[dev]"` (CadQuery is heavy,
@@ -167,6 +191,7 @@ products/<PRODUCT>/<assembly>/assembly.py                 optional: the assemble
    - any assumptions you had to make;
    - the page link: `https://anroleroux.github.io/neoBotics/products/<designation>/index.html`
      (e.g. `.../products/PB4/chassis/battery_18650/index.html`).
+     For a library item it is `.../library/<category>/<item>/index.html`.
 
 ## Other changes
 

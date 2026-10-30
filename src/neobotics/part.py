@@ -17,6 +17,13 @@ Two names are provided to every script:
                    returns its top-level names as attributes — so a lid can be
                    sized from its box (``box = load_part("../base")`` then
                    ``box.l``), and an assembly can place its parts.
+  load_library(designation)
+                   the same for a reusable part or assembly in the parts
+                   library, by its designation there
+                   (``load_library("battery_holders/holder_18650")``), from any
+                   script at any depth.  The library is the ``library/``
+                   directory nearest above the calling script, or the one the
+                   ``NEOBOTICS_LIBRARY`` environment variable names.
 
 An assembly directory may hold an ``assembly.py`` whose ``result`` is a
 ``cq.Assembly``: the parts placed together.  It is checked shape by
@@ -88,6 +95,9 @@ class BuildResult:
 # in the child process
 # --------------------------------------------------------------------------
 SCRIPT_NAMES = ("part.py", "assembly.py")
+#: The parts library's directory name, and the variable that overrides where it is.
+LIBRARY_DIR = "library"
+LIBRARY_ENV = "NEOBOTICS_LIBRARY"
 
 
 def script_in(directory: Path) -> Path | None:
@@ -95,6 +105,19 @@ def script_in(directory: Path) -> Path | None:
     for name in SCRIPT_NAMES:
         if (Path(directory) / name).is_file():
             return Path(directory) / name
+    return None
+
+
+def library_root(start: Path) -> Path | None:
+    """The parts library a script in ``start`` uses: ``$NEOBOTICS_LIBRARY``, else
+    the ``library/`` directory nearest above ``start``."""
+    if os.environ.get(LIBRARY_ENV):
+        return Path(os.environ[LIBRARY_ENV]).resolve()
+    for directory in [Path(start).resolve(), *Path(start).resolve().parents]:
+        if (directory / LIBRARY_DIR).is_dir():
+            return directory / LIBRARY_DIR
+        if directory.name == LIBRARY_DIR:  # a script inside the library itself
+            return directory
     return None
 
 
@@ -108,29 +131,40 @@ class _Loader:
         self.cache: dict[Path, SimpleNamespace] = {}
         self.stack: list[Path] = []
 
-    def bind(self, directory: Path):
+    def load(self, target: Path, call: str) -> SimpleNamespace:
+        script = script_in(target)
+        if script is None:
+            raise PartError(f"{call}: no part.py or assembly.py in {target}")
+        if script in self.stack:
+            chain = " -> ".join(p.parent.name for p in [*self.stack, script])
+            raise PartError(f"load_part cycle: {chain}")
+        if script not in self.cache:
+            self.stack.append(script)
+            try:
+                namespace = self.run(script.read_text(), script)
+            finally:
+                self.stack.pop()
+            self.cache[script] = SimpleNamespace(
+                **{k: v for k, v in namespace.items() if not k.startswith("__")})
+        return self.cache[script]
+
+    def bind(self, directory: Path) -> dict[str, Any]:
         def load_part(path: str) -> SimpleNamespace:
-            target = (Path(directory) / path).resolve()
-            script = script_in(target)
-            if script is None:
-                raise PartError(f"load_part({path!r}): no part.py or assembly.py in {target}")
-            if script in self.stack:
-                chain = " -> ".join(p.parent.name for p in [*self.stack, script])
-                raise PartError(f"load_part cycle: {chain}")
-            if script not in self.cache:
-                self.stack.append(script)
-                try:
-                    namespace = self.run(script.read_text(), script)
-                finally:
-                    self.stack.pop()
-                self.cache[script] = SimpleNamespace(
-                    **{k: v for k, v in namespace.items() if not k.startswith("__")})
-            return self.cache[script]
-        return load_part
+            return self.load((Path(directory) / path).resolve(), f"load_part({path!r})")
+
+        def load_library(designation: str) -> SimpleNamespace:
+            call = f"load_library({designation!r})"
+            root = library_root(directory)
+            if root is None:
+                raise PartError(f"{call}: no {LIBRARY_DIR}/ directory above {directory}; "
+                                f"set {LIBRARY_ENV} to the parts library")
+            return self.load((root / designation.strip("/")).resolve(), call)
+
+        return {"load_part": load_part, "load_library": load_library}
 
     def run(self, source: str, script: Path) -> dict[str, Any]:
         namespace: dict[str, Any] = {"__name__": "__cadquery_script__",
-                                     "load_part": self.bind(script.parent)}
+                                     **self.bind(script.parent)}
         exec(compile(source, str(script.name), "exec"), namespace)
         return namespace
 
